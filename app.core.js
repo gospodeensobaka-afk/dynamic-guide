@@ -1223,7 +1223,268 @@ startBtn.onclick = async () => {
     intro.play().catch(()=>{});
 
     startBtn.style.display = "none";
+/* ========================================================
+   =============== DYNAMIC ROUTE + ZONES ===================
+   ======================================================== */
 
+/* === 1. Ждём первую GPS-точку пользователя === */
+let userLat = null;
+let userLng = null;
+
+await new Promise(resolve => {
+    const watch = navigator.geolocation.watchPosition(pos => {
+        userLat = pos.coords.latitude;
+        userLng = pos.coords.longitude;
+        navigator.geolocation.clearWatch(watch);
+        resolve();
+    }, err => {
+        console.warn("GPS error:", err);
+        resolve();
+    }, { enableHighAccuracy: true });
+});
+
+if (!userLat || !userLng) {
+    console.warn("No GPS — dynamic guide disabled");
+    return;
+}
+
+/* === 2. Генерируем 4 точки круга радиусом 50 м === */
+function generateCirclePoints(lat, lng, radius = 50, count = 4) {
+    const pts = [];
+    for (let i = 0; i < count; i++) {
+        const angle = (i / count) * 2 * Math.PI;
+        const dx = radius * Math.cos(angle);
+        const dy = radius * Math.sin(angle);
+
+        const dLat = dy / 111320;
+        const dLng = dx / (111320 * Math.cos(lat * Math.PI / 180));
+
+        pts.push([lng + dLng, lat + dLat]);
+    }
+    return pts;
+}
+
+const rawPoints = generateCirclePoints(userLat, userLng, 50, 4);
+
+/* ========================================================
+   =============== 3. ПРИВЯЗКА К ТРОТУАРАМ =================
+   ======================================================== */
+
+/* === Overpass API запрос === */
+async function fetchFootwaysAround(lat, lng) {
+    const query = `
+        [out:json];
+        (
+          way["highway"="footway"](around:70, ${lat}, ${lng});
+          way["highway"="path"](around:70, ${lat}, ${lng});
+          way["highway"="pedestrian"](around:70, ${lat}, ${lng});
+          way["highway"="service"]["foot"="yes"](around:70, ${lat}, ${lng});
+        );
+        out geom;
+    `;
+
+    const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
+
+    try {
+        const res = await fetch(url);
+        const json = await res.json();
+        return json.elements || [];
+    } catch (e) {
+        console.warn("Overpass error:", e);
+        return [];
+    }
+}
+
+/* === расстояние от точки до сегмента + проекция === */
+function projectPointToSegment(px, py, ax, ay, bx, by) {
+    const A = { x: ax, y: ay };
+    const B = { x: bx, y: by };
+    const P = { x: px, y: py };
+
+    const AB = { x: B.x - A.x, y: B.y - A.y };
+    const AP = { x: P.x - A.x, y: P.y - A.y };
+
+    const ab2 = AB.x * AB.x + AB.y * AB.y;
+    if (ab2 === 0) return { x: ax, y: ay, dist: Infinity };
+
+    let t = (AP.x * AB.x + AP.y * AB.y) / ab2;
+    t = Math.max(0, Math.min(1, t));
+
+    const proj = { x: A.x + AB.x * t, y: A.y + AB.y * t };
+
+    const dx = proj.x - P.x;
+    const dy = proj.y - P.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    return { x: proj.x, y: proj.y, dist };
+}
+
+/* === Привязка одной точки к ближайшему тротуару === */
+async function snapPointToFootways(point) {
+    const [lng, lat] = point;
+
+    const ways = await fetchFootwaysAround(lat, lng);
+    if (!ways.length) return point; // нет тротуаров → оставляем как есть
+
+    let best = { dist: Infinity, x: null, y: null };
+
+    for (const w of ways) {
+        const nodes = w.geometry;
+        for (let i = 0; i < nodes.length - 1; i++) {
+            const A = nodes[i];
+            const B = nodes[i + 1];
+
+            const proj = projectPointToSegment(
+                lng, lat,
+                A.lon, A.lat,
+                B.lon, B.lat
+            );
+
+            if (proj.dist < best.dist) {
+                best = proj;
+            }
+        }
+    }
+
+    if (best.dist === Infinity) return point;
+    return [best.x, best.y];
+}
+
+/* === Привязка всех точек === */
+async function snapPointsToFootways(points) {
+    const snapped = [];
+    for (const p of points) {
+        const s = await snapPointToFootways(p);
+        snapped.push(s);
+    }
+    return snapped;
+}
+
+const snappedPoints = await snapPointsToFootways(rawPoints);
+
+/* ========================================================
+   =============== 4. ПЕШЕХОДНЫЙ МАРШРУТ (OSRM) ============
+   ======================================================== */
+
+async function buildPedestrianRoute(points) {
+    const coords = [];
+
+    for (let i = 0; i < points.length; i++) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+
+        const url =
+            `https://router.project-osrm.org/route/v1/foot/` +
+            `${a[0]},${a[1]};${b[0]},${b[1]}` +
+            `?overview=full&geometries=geojson`;
+
+        try {
+            const res = await fetch(url);
+            const json = await res.json();
+
+            if (json.routes && json.routes[0]) {
+                const seg = json.routes[0].geometry.coordinates;
+                coords.push(...seg);
+            }
+        } catch (e) {
+            console.warn("OSRM error:", e);
+        }
+    }
+
+    return coords;
+}
+
+const routeCoords = await buildPedestrianRoute(snappedPoints);
+
+/* ========================================================
+   =============== 5. СОЗДАЁМ ЗОНЫ =========================
+   ======================================================== */
+
+zones = snappedPoints.map((pt, i) => ({
+    id: i + 1,
+    type: "audio",
+    lat: pt[1],
+    lng: pt[0],
+    radius: 20,
+    visited: false,
+    audio: "audio/test.mp3"
+}));
+
+totalAudioZones = zones.length;
+
+const audioCircleFeatures = zones.map(z => ({
+    type: "Feature",
+    properties: { id: z.id, visited: false },
+    geometry: { type: "Point", coordinates: [z.lng, z.lat] }
+}));
+
+map.addSource("audio-circles", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: audioCircleFeatures }
+});
+
+map.addLayer({
+    id: "audio-circles-layer",
+    type: "circle",
+    source: "audio-circles",
+    paint: {
+        "circle-radius": 18,
+        "circle-color": "rgba(255,0,0,0.15)",
+        "circle-stroke-color": "rgba(255,0,0,0.4)",
+        "circle-stroke-width": 2
+    }
+});
+
+/* === симуляция по клику === */
+map.on("click", "audio-circles-layer", (e) => {
+    const id = e.features[0].properties.id;
+    simulateAudioZone(id);
+});
+
+/* ========================================================
+   =============== 6. СОЗДАЁМ МАРШРУТ ======================
+   ======================================================== */
+
+fullRoute = routeCoords.map(c => ({ coord: [c[0], c[1]] }));
+
+map.addSource("route-remaining", {
+    type: "geojson",
+    data: {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: routeCoords }
+    }
+});
+
+map.addSource("route-passed", {
+    type: "geojson",
+    data: {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [] }
+    }
+});
+
+map.addLayer({
+    id: "route-remaining-line",
+    type: "line",
+    source: "route-remaining",
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-width": 4, "line-color": "#007aff" }
+});
+
+map.addLayer({
+    id: "route-passed-line",
+    type: "line",
+    source: "route-passed",
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-width": 4, "line-color": "#333333" }
+});
+
+/* === центрируем карту === */
+map.easeTo({
+    center: [userLng, userLat],
+    zoom: 17,
+    duration: 1500
+});
     /* ========================================================
        =============== DYNAMIC ROUTE + ZONES ===================
        ======================================================== */
@@ -1265,7 +1526,7 @@ startBtn.onclick = async () => {
         return pts;
     }
 
-    const circlePoints = generateCirclePoints(userLat, userLng, 100, 8);
+    const circlePoints = generateCirclePoints(userLat, userLng, 50, 4);
 
     // 3) Создаём аудиозоны
     zones = circlePoints.map((pt, i) => ({
@@ -1303,7 +1564,10 @@ startBtn.onclick = async () => {
             "circle-stroke-width": 2
         }
     });
-
+map.on("click", "audio-circles-layer", (e) => {
+    const id = e.features[0].properties.id;
+    simulateAudioZone(id);
+});
     // 5) Строим маршрут между точками (просто соединяем линией)
     const routeCoords = circlePoints.map(pt => [pt[0], pt[1]]);
     routeCoords.push(routeCoords[0]); // замыкаем круг
@@ -1367,6 +1631,7 @@ startBtn.onclick = async () => {
 document.addEventListener("DOMContentLoaded", initMap);
 
 /* ==================== END OF APP.JS ====================== */
+
 
 
 
