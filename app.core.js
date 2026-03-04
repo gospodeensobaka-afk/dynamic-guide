@@ -276,27 +276,25 @@ function playZoneAudio(src, id) {
 
 function updateCircleColors() {
     const circleSource = map.getSource("audio-circles");
-    const polygonSource = map.getSource("audio-polygons");
-    if (!circleSource && !polygonSource) return;
+    if (!circleSource) return;
 
-    const audioZones = zones.filter(z => z.type === "audio");
+    const updated = zones.map(z => ({
+        type: "Feature",
+        properties: {
+            id: z.id,
+            visited: z.visited
+        },
+        geometry: {
+            type: "Point",
+            coordinates: [z.lng, z.lat]
+        }
+    }));
 
-    if (circleSource) {
-        circleSource.setData({
-            type: "FeatureCollection",
-            features: audioZones
-                .filter(z => !z.shape || z.shape !== "polygon")
-                .map(z => ({
-                    type: "Feature",
-                    properties: {
-                        id: z.id,
-                        visited: z.visited,
-                        ...(z.customColor ? { customColor: z.customColor } : {})
-                    },
-                    geometry: { type: "Point", coordinates: [z.lng, z.lat] }
-                }))
-        });
-    }
+    circleSource.setData({
+        type: "FeatureCollection",
+        features: updated
+    });
+}
 
     if (polygonSource) {
         polygonSource.setData({
@@ -548,54 +546,49 @@ function checkZones(coords) {
                /* ========================================================
                   ========== SIMULATE AUDIO ZONE (MANUAL TRIGGER) =========
                   ======================================================== */
-               function simulateAudioZone(id) {
+              function simulateAudioZone(id) {
     const z = zones.find(z => z.id === id && z.type === "audio");
     if (!z) return;
-    // === ГЛОБАЛЬНЫЙ РАЗРЕШИТЕЛЬ АУДИО ДЛЯ СИМУЛЯЦИИ ===
+
+    // Разрешение аудио
     if (!window.__simUserGestureBound) {
         window.__simUserGestureBound = true;
-
         document.body.addEventListener("click", () => {
-            // После первого клика браузер разрешит любые play()
             globalAudio.play().catch(() => {});
         }, { once: true });
     }
-    // Разрешаем повторный запуск в симуляции
-    z.visited = false;
 
-    z.visited = true;
-    visitedAudioZones++;
-    updateProgress();
+    // Правильная логика visited
+    if (!z.visited) {
+        z.visited = true;
+        visitedAudioZones++;
+        updateProgress();
+    }
+
     updateCircleColors();
 
+    // Аудио
     if (z.audio) {
-      window.__currentZoneId = id;
+        window.__currentZoneId = id;
         if (!audioEnabled) audioEnabled = true;
-      preloadAllMediaForCurrentAudio(z.audio); // ← ДОП-ПРЕДЗАГРУЗКА ДЛЯ СИМУЛЯЦИИ   
 
-        // Полный сброс аудио, чтобы браузер считал это новым запуском
+        preloadAllMediaForCurrentAudio(z.audio);
+
         globalAudio.pause();
         globalAudio.removeAttribute("src");
         globalAudio.load();
         globalAudio.src = z.audio;
         globalAudio.currentTime = 0;
 
-        // Сбрасываем старый таймер
-        globalAudio.ontimeupdate = null;
-
-        // ВАЖНО: тайминги ДО play()
         setupPhotoTimingsForAudio(globalAudio, id);
 
-        // Запуск аудио
         globalAudio.play().catch(() => {});
-
         audioPlaying = true;
         globalAudio.onended = () => audioPlaying = false;
     }
 
     console.log("Simulated audio zone:", id);
 }
-             
 
                /* ========================================================
    ===================== SMOOTH GPS ========================
@@ -1385,15 +1378,18 @@ async function buildPedestrianRoute(points) {
             if (json.routes && json.routes[0]) {
                 const seg = json.routes[0].geometry.coordinates;
                 coords.push(...seg);
+            } else {
+                // fallback — соединяем прямой линией
+                coords.push(a, b);
             }
         } catch (e) {
             console.warn("OSRM error:", e);
+            coords.push(a, b); // fallback
         }
     }
 
     return coords;
 }
-
 const routeCoords = await buildPedestrianRoute(snappedPoints);
 
 /* ========================================================
@@ -1504,6 +1500,7 @@ map.easeTo({
 document.addEventListener("DOMContentLoaded", initMap);
 
 /* ==================== END OF APP.JS ====================== */
+
 
 
 
