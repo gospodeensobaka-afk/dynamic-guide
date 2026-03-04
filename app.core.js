@@ -888,7 +888,131 @@ globalAudio.autoplay = true;
                           ======================================================== */
                
                        map.on("move", handleMapMove);
-               
+               /* ========================================================
+   =============== DYNAMIC ROUTE + ZONES ===================
+   ======================================================== */
+
+// 1) Ждём первую GPS-точку пользователя
+let userLat = null;
+let userLng = null;
+
+await new Promise(resolve => {
+    const watch = navigator.geolocation.watchPosition(pos => {
+        userLat = pos.coords.latitude;
+        userLng = pos.coords.longitude;
+        navigator.geolocation.clearWatch(watch);
+        resolve();
+    }, err => {
+        console.warn("GPS error:", err);
+        resolve();
+    }, { enableHighAccuracy: true });
+});
+
+// Если GPS не дал координаты — выходим
+if (!userLat || !userLng) {
+    console.warn("No GPS — dynamic guide disabled");
+    return;
+}
+
+// 2) Генерируем круг из 8 точек радиусом 100 м
+function generateCirclePoints(lat, lng, radius = 100, count = 8) {
+    const pts = [];
+    for (let i = 0; i < count; i++) {
+        const angle = (i / count) * 2 * Math.PI;
+        const dx = radius * Math.cos(angle);
+        const dy = radius * Math.sin(angle);
+
+        const dLat = dy / 111320;
+        const dLng = dx / (111320 * Math.cos(lat * Math.PI / 180));
+
+        pts.push([lng + dLng, lat + dLat]);
+    }
+    return pts;
+}
+
+const circlePoints = generateCirclePoints(userLat, userLng, 100, 8);
+
+// 3) Создаём аудиозоны
+zones = circlePoints.map((pt, i) => ({
+    id: i + 1,
+    type: "audio",
+    lat: pt[1],
+    lng: pt[0],
+    radius: 20,
+    visited: false,
+    audio: "audio/test.mp3"
+}));
+
+totalAudioZones = zones.length;
+
+// 4) Создаём GeoJSON для аудиозон
+const audioCircleFeatures = zones.map(z => ({
+    type: "Feature",
+    properties: { id: z.id, visited: false },
+    geometry: { type: "Point", coordinates: [z.lng, z.lat] }
+}));
+
+map.addSource("audio-circles", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: audioCircleFeatures }
+});
+
+map.addLayer({
+    id: "audio-circles-layer",
+    type: "circle",
+    source: "audio-circles",
+    paint: {
+        "circle-radius": 18,
+        "circle-color": "rgba(255,0,0,0.15)",
+        "circle-stroke-color": "rgba(255,0,0,0.4)",
+        "circle-stroke-width": 2
+    }
+});
+
+// 5) Строим маршрут между точками (просто соединяем линией)
+const routeCoords = circlePoints.map(pt => [pt[0], pt[1]]);
+routeCoords.push(routeCoords[0]); // замыкаем круг
+
+fullRoute = routeCoords.map(c => ({ coord: [c[0], c[1]] }));
+
+map.addSource("route-remaining", {
+    type: "geojson",
+    data: {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: routeCoords }
+    }
+});
+
+map.addSource("route-passed", {
+    type: "geojson",
+    data: {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [] }
+    }
+});
+
+map.addLayer({
+    id: "route-remaining-line",
+    type: "line",
+    source: "route-remaining",
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-width": 4, "line-color": "#007aff" }
+});
+
+map.addLayer({
+    id: "route-passed-line",
+    type: "line",
+    source: "route-passed",
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-width": 4, "line-color": "#333333" }
+});
+
+// 6) Центрируем карту на пользователя
+map.easeTo({
+    center: [userLng, userLat],
+    zoom: 17,
+    duration: 1500
+});
                        console.log("Карта готова");
                     
                    });
@@ -1248,6 +1372,7 @@ if (startBtn) {
 document.addEventListener("DOMContentLoaded", initMap);
 
 /* ==================== END OF APP.JS ====================== */
+
 
 
 
