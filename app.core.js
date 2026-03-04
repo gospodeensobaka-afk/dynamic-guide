@@ -315,7 +315,7 @@ function updateCircleColors() {
                 }))
         });
     }
-}
+
 
 function pointInPolygon(point, polygon) {
     const x = point[1]; // lat
@@ -1500,6 +1500,7 @@ map.easeTo({
 document.addEventListener("DOMContentLoaded", initMap);
 
 /* ==================== END OF APP.JS ====================== */
+
 
 
 
