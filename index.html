@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini Audio Guide</title>
+
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- MapLibre -->
+    <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+
+    <script src="app.core.js" defer></script>
+    <script src="app.media.js" defer></script>
+    <script src="app.experimental.js" defer></script>
+</head>
+
+<body>
+
+    <!-- AUDIO WRAPPER -->
+    <div id="audioWrapper">
+        <audio id="globalAudio" controls preload="auto"></audio>
+    </div>
+
+    <!-- START TOUR BUTTON -->
+    <button id="startTourBtn"
+        style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:999999;">
+        Начать экскурсию
+    </button>
+
+    <!-- NOT READY BUTTON (перенесена на место компаса) -->
+    <button id="notReadyBtn">
+        Не успеваю
+    </button>
+
+    <!-- PROGRESS BAR (справа от "Не успеваю") -->
+   <div id="tourProgress">
+       Пройдено: 0 из 0
+   </div>
+       
+
+    <!-- MAP -->
+    <div id="map"></div>
+
+    <!-- PHOTO OVERLAY -->
+    <div id="photoOverlay" class="photo-overlay hidden">
+        <div class="photo-inner">
+            <img id="photoImage" src="">
+            <button id="closePhotoBtn" class="close-photo-btn">✕</button>
+        </div>
+    </div>
+
+    <!-- GALLERY OVERLAY -->
+    <div id="galleryOverlay" class="hidden"></div>
+
+ 
+
+</body>
+</html>
+
+
