@@ -232,7 +232,7 @@ let followTimeout = null;
                    if (!el) return;
                    el.textContent = `Пройдено: ${visitedAudioZones} из ${totalAudioZones}`;
                }
-              /* ========================================================
+             /* ========================================================
    ===================== AUDIO ZONES =======================
    ======================================================== */
 
@@ -274,6 +274,7 @@ function playZoneAudio(src, id) {
     globalAudio.onended = () => audioPlaying = false;
 }
 
+/* === FIXED: чистая версия без polygonSource === */
 function updateCircleColors() {
     const circleSource = map.getSource("audio-circles");
     if (!circleSource) return;
@@ -296,26 +297,12 @@ function updateCircleColors() {
     });
 }
 
-    if (polygonSource) {
-        polygonSource.setData({
-            type: "FeatureCollection",
-            features: audioZones
-                .filter(z => z.shape === "polygon" && Array.isArray(z.polygon))
-                .map(z => ({
-                    type: "Feature",
-                    properties: {
-                        id: z.id,
-                        visited: z.visited,
-                        ...(z.customColor ? { customColor: z.customColor } : {})
-                    },
-                    geometry: {
-                        type: "Polygon",
-                        coordinates: [z.polygon]
-                    }
-                }))
-        });
-    }
+/* === polygon logic removed — теперь всё корректно === */
 
+
+/* ========================================================
+   ===================== ZONE CHECK ========================
+   ======================================================== */
 
 function pointInPolygon(point, polygon) {
     const x = point[1]; // lat
@@ -334,12 +321,14 @@ function pointInPolygon(point, polygon) {
     }
     return inside;
 }
+
 function checkZones(coords) {
     zones.forEach(z => {
         if (z.type !== "audio") return;
 
         let inside = false;
 
+        // Поддержка полигонов остаётся, но polygonSource мы убрали
         if (z.shape === "polygon" && Array.isArray(z.polygon)) {
             inside = pointInPolygon([coords[0], coords[1]], z.polygon);
         } else {
@@ -1500,6 +1489,7 @@ map.easeTo({
 document.addEventListener("DOMContentLoaded", initMap);
 
 /* ==================== END OF APP.JS ====================== */
+
 
 
 
