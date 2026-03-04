@@ -613,14 +613,14 @@ async function spawnDynamicZones(userLat, userLng) {
 
     // === 4. Создаём зоны ===
     zones = snappedZones.map((pt, i) => ({
-        id: i + 1,
-        type: "audio",
-        lat: pt[1],
-        lng: pt[0],
-        radius: 20,
-        visited: false,
-        audio: null // подключишь позже
-    }));
+    id: i + 1,
+    type: "audio",
+    lat: pt[1],
+    lng: pt[0],
+    radius: 20,
+    visited: false,
+    audio: `audio/${i + 1}.m4a`
+}));
 
     totalAudioZones = zones.length;
     updateProgress();
@@ -1060,3 +1060,4 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ==================== END OF APP.JS ====================== */
+
