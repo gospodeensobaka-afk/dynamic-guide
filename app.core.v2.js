@@ -4,24 +4,10 @@
 
 /* === SMART PRELOAD QUEUE === */
 let preloadDebugList = [];
-
-function updateDebugStatus() {
-    const el = document.getElementById("miniPreloadStatus");
-    if (!el) return;
-    if (preloadDebugList.length === 0) { el.innerHTML = "Загрузка…"; return; }
-    let html = "Загрузка…<br>Предзагружено наперёд:<br>";
-    preloadDebugList.forEach(item => { html += `→ зона ${item.zoneId} (${item.file})<br>`; });
-    el.innerHTML = html;
-}
-
 let preloadQueue = [];
 let preloadInProgress = false;
 
 function queuePreload(files, zoneId = null) {
-    if (zoneId !== null) {
-        files.forEach(f => { preloadDebugList.push({ zoneId, file: f }); });
-        updateDebugStatus();
-    }
     preloadQueue.push(...files);
     runPreloadQueue();
 }
@@ -74,12 +60,6 @@ function hideMiniStatus() {
 /* === CORE STATE === */
 let tourStarted = false;
 let map;
-let currentPointImage = null;
-
-const photoOverlay = document.getElementById("photoOverlay");
-const photoImage   = document.getElementById("photoImage");
-const closePhotoBtn = document.getElementById("closePhotoBtn");
-
 let arrowEl = null;
 let lastCoords = null;
 let zones = [];
@@ -96,14 +76,8 @@ let totalAudioZones = 0;
 let visitedAudioZones = 0;
 
 let fullRoute = [];
-let routeSegments = [];
-let activeSegmentIndex = null;
-let passedRoute = [];
-let maxPassedIndex = 0;
-
 let compassActive = false;
 let userTouching = false;
-let userInteracting = false;
 let smoothAngle = 0;
 let compassUpdates = 0;
 let followMode = true;
@@ -111,15 +85,17 @@ let followTimeout = null;
 
 let gpsAngleLast = null;
 let gpsUpdates = 0;
-let arrowPngStatus = "init";
-let iconsPngStatus = "init";
 let lastMapBearing = 0;
 let lastCorrectedAngle = 0;
-let lastRouteDist = null;
-let lastRouteSegmentIndex = null;
-let lastZoneDebug = "";
 
-const ROUTE_HITBOX_METERS = 6;
+/* === NEXT ZONE MARKER === */
+let nextZoneMarker = null;
+
+/* === WAKE LOCK === */
+let __wakeLock = null;
+let __audioUnlocked = false;
+let __videoUnlocked = false;
+let __audioContext = null;
 
 /* ========================================================
    ===================== UTILITIES ========================
@@ -177,176 +153,329 @@ function updateProgress() {
 }
 
 /* ========================================================
-   ===================== AUDIO ZONES =======================
+   ===================== ONBOARDING =======================
    ======================================================== */
 
-function preloadAllMediaForCurrentAudio(audioSrc) {
-    const clean = audioSrc.split("?")[0].split("#")[0];
-    const key = clean.startsWith("audio/") ? clean : "audio/" + clean.split("/").pop();
-    const p = photoTimings[key];
-    const v = videoTimings[key];
-    if (p) for (const t in p) queuePreload([p[t].open]);
-    if (v) for (const t in v) queuePreload([v[t].open]);
+function showOnboarding() {
+    // Инжектим стили
+    const style = document.createElement("style");
+    style.textContent = `
+        #onboardingOverlay {
+            position: fixed; inset: 0; z-index: 999999;
+            background: #0a0a0f;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+        }
+        #onboardingSlider {
+            width: 100%; height: 100%;
+            display: flex; overflow: hidden;
+            position: relative;
+        }
+        .ob-slide {
+            min-width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            padding: 40px 32px;
+            box-sizing: border-box;
+            transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+        }
+        .ob-illustration {
+            width: 200px; height: 200px;
+            margin-bottom: 36px;
+            border-radius: 32px;
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+        .ob-title {
+            font-size: 24px; font-weight: 700;
+            color: #fff; text-align: center;
+            margin-bottom: 14px; line-height: 1.25;
+        }
+        .ob-desc {
+            font-size: 16px; color: rgba(255,255,255,0.6);
+            text-align: center; line-height: 1.6;
+            max-width: 300px;
+        }
+        #obDots {
+            display: flex; gap: 8px;
+            position: absolute; bottom: 110px;
+        }
+        .ob-dot {
+            width: 8px; height: 8px; border-radius: 4px;
+            background: rgba(255,255,255,0.25);
+            transition: all 0.3s ease;
+        }
+        .ob-dot.active {
+            width: 24px;
+            background: #fff;
+        }
+        #obNextBtn {
+            position: absolute; bottom: 40px;
+            width: calc(100% - 64px);
+            padding: 17px;
+            border-radius: 16px; border: none;
+            font-size: 17px; font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.12s ease, opacity 0.12s ease;
+        }
+        #obNextBtn:active { transform: scale(0.97); opacity: 0.85; }
+    `;
+    document.head.appendChild(style);
+
+    const slides = [
+        {
+            color: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+            accent: "#0a84ff",
+            svg: `<svg width="110" height="110" viewBox="0 0 110 110" fill="none">
+                <circle cx="55" cy="55" r="40" fill="rgba(10,132,255,0.15)" stroke="rgba(10,132,255,0.4)" stroke-width="2"/>
+                <circle cx="55" cy="55" r="24" fill="rgba(10,132,255,0.25)" stroke="#0a84ff" stroke-width="2"/>
+                <circle cx="55" cy="55" r="8" fill="#0a84ff"/>
+                <path d="M55 15 L55 95 M15 55 L95 55" stroke="rgba(10,132,255,0.2)" stroke-width="1" stroke-dasharray="4 4"/>
+                <!-- walking figure -->
+                <circle cx="55" cy="38" r="4" fill="#fff"/>
+                <path d="M55 42 L55 54 M55 54 L50 64 M55 54 L60 64 M50 46 L60 46" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+            </svg>`,
+            title: "Входи в красный круг",
+            desc: "Подойди к красному кружку на карте — автоматически начнётся аудиорассказ об этом месте"
+        },
+        {
+            color: "linear-gradient(135deg, #1a1a2e 0%, #0d1f1a 100%)",
+            accent: "#30d158",
+            svg: `<svg width="110" height="110" viewBox="0 0 110 110" fill="none">
+                <!-- phone mockup -->
+                <rect x="30" y="15" width="50" height="80" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+                <rect x="35" y="25" width="40" height="50" rx="4" fill="rgba(48,209,88,0.1)" stroke="rgba(48,209,88,0.3)" stroke-width="1"/>
+                <!-- photo icon inside -->
+                <rect x="40" y="30" width="30" height="22" rx="3" fill="rgba(48,209,88,0.2)"/>
+                <circle cx="47" cy="37" r="3" fill="#30d158"/>
+                <path d="M40 48 L48 40 L55 46 L60 41 L70 52" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- swipe arrow -->
+                <path d="M28 75 L82 75" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3 3"/>
+                <path d="M68 70 L82 75 L68 80" stroke="#30d158" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <!-- dots -->
+                <circle cx="45" cy="87" r="3" fill="#30d158"/>
+                <circle cx="55" cy="87" r="3" fill="rgba(255,255,255,0.25)"/>
+                <circle cx="65" cy="87" r="3" fill="rgba(255,255,255,0.25)"/>
+            </svg>`,
+            title: "Фото всплывает само",
+            desc: "В нужный момент аудиогид покажет фото. Свайпай влево-вправо чтобы листать галерею"
+        },
+        {
+            color: "linear-gradient(135deg, #1a1a2e 0%, #1f1a0d 100%)",
+            accent: "#ff9f0a",
+            svg: `<svg width="110" height="110" viewBox="0 0 110 110" fill="none">
+                <!-- map with route -->
+                <rect x="20" y="20" width="70" height="70" rx="12" fill="rgba(255,159,10,0.08)" stroke="rgba(255,159,10,0.2)" stroke-width="1.5"/>
+                <!-- route line -->
+                <path d="M35 80 Q35 55 55 55 Q75 55 75 35" stroke="#ff9f0a" stroke-width="2.5" stroke-linecap="round" fill="none" stroke-dasharray="none"/>
+                <!-- zone circles -->
+                <circle cx="35" cy="80" r="7" fill="rgba(48,209,88,0.3)" stroke="#30d158" stroke-width="1.5"/>
+                <circle cx="55" cy="55" r="7" fill="rgba(255,159,10,0.3)" stroke="#ff9f0a" stroke-width="1.5"/>
+                <circle cx="75" cy="35" r="7" fill="rgba(255,59,48,0.2)" stroke="rgba(255,59,48,0.5)" stroke-width="1.5"/>
+                <!-- checkmark in first circle -->
+                <path d="M32 80 L35 83 L39 77" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- missed badge -->
+                <rect x="60" y="18" width="36" height="20" rx="10" fill="#ff9f0a"/>
+                <text x="78" y="32" font-size="11" fill="#000" font-weight="700" text-anchor="middle">Пропуск</text>
+            </svg>`,
+            title: "Не успел — не страшно",
+            desc: "Кнопка «Не успеваю» сохранит пропущенное. Посмотришь в конце тура в любое время"
+        }
+    ];
+
+    const overlay = document.createElement("div");
+    overlay.id = "onboardingOverlay";
+
+    const slider = document.createElement("div");
+    slider.id = "onboardingSlider";
+
+    slides.forEach((s, i) => {
+        const slide = document.createElement("div");
+        slide.className = "ob-slide";
+        slide.style.background = s.color;
+
+        const illus = document.createElement("div");
+        illus.className = "ob-illustration";
+        illus.style.background = `radial-gradient(circle at 50% 50%, ${s.accent}22 0%, transparent 70%)`;
+        illus.innerHTML = s.svg;
+
+        const title = document.createElement("div");
+        title.className = "ob-title";
+        title.textContent = s.title;
+
+        const desc = document.createElement("div");
+        desc.className = "ob-desc";
+        desc.textContent = s.desc;
+
+        slide.appendChild(illus);
+        slide.appendChild(title);
+        slide.appendChild(desc);
+        slider.appendChild(slide);
+    });
+
+    // Dots
+    const dots = document.createElement("div");
+    dots.id = "obDots";
+    slides.forEach((_, i) => {
+        const dot = document.createElement("div");
+        dot.className = "ob-dot" + (i === 0 ? " active" : "");
+        dots.appendChild(dot);
+    });
+
+    // Button
+    const btn = document.createElement("button");
+    btn.id = "obNextBtn";
+    btn.textContent = "Далее";
+
+    overlay.appendChild(slider);
+    overlay.appendChild(dots);
+    overlay.appendChild(btn);
+    document.body.appendChild(overlay);
+
+    let current = 0;
+    const allDots = dots.querySelectorAll(".ob-dot");
+    const allSlides = slider.querySelectorAll(".ob-slide");
+
+    function goTo(idx) {
+        current = idx;
+        slider.scrollTo({ left: idx * slider.offsetWidth, behavior: "smooth" });
+        allDots.forEach((d, i) => d.classList.toggle("active", i === idx));
+        btn.style.background = slides[idx].accent === "#0a84ff"
+            ? "linear-gradient(180deg,#0a84ff 0%,#0066cc 100%)"
+            : slides[idx].accent === "#30d158"
+            ? "linear-gradient(180deg,#30d158 0%,#1fa347 100%)"
+            : "linear-gradient(180deg,#ff9f0a 0%,#e08800 100%)";
+        btn.style.color = slides[idx].accent === "#ff9f0a" ? "#000" : "#fff";
+        btn.textContent = idx === slides.length - 1 ? "Начать тур 🎧" : "Далее";
+    }
+
+    goTo(0);
+
+    // Swipe support
+    let touchStartX = 0;
+    slider.addEventListener("touchstart", e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+    slider.addEventListener("touchend", e => {
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        if (dx < -50 && current < slides.length - 1) goTo(current + 1);
+        if (dx > 50 && current > 0) goTo(current - 1);
+    }, { passive: true });
+
+    btn.onclick = () => {
+        if (current < slides.length - 1) {
+            goTo(current + 1);
+        } else {
+            overlay.style.opacity = "0";
+            overlay.style.transition = "opacity 0.3s ease";
+            setTimeout(() => overlay.remove(), 300);
+        }
+    };
 }
+
+/* ========================================================
+   =================== NEXT ZONE ARROW ====================
+   ======================================================== */
+
+(function injectNextZoneCSS() {
+    const style = document.createElement("style");
+    style.textContent = `
+        @keyframes nextZoneBounce {
+            0%   { transform: translateY(0px) perspective(200px) rotateX(20deg); }
+            40%  { transform: translateY(-14px) perspective(200px) rotateX(20deg); }
+            60%  { transform: translateY(-14px) perspective(200px) rotateX(20deg); }
+            100% { transform: translateY(0px) perspective(200px) rotateX(20deg); }
+        }
+        .next-zone-arrow-inner {
+            animation: nextZoneBounce 0.9s ease-in-out infinite;
+            pointer-events: none;
+            transform-origin: center bottom;
+            display: block;
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
+function createNextZoneArrowEl() {
+    const el = document.createElement("div");
+    el.style.width = "50px";
+    el.style.height = "60px";
+    el.style.pointerEvents = "none";
+
+    const inner = document.createElement("div");
+    inner.className = "next-zone-arrow-inner";
+    inner.innerHTML = `
+        <svg width="50" height="60" viewBox="0 0 50 60" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <filter id="nzGlow">
+                    <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+            </defs>
+            <rect x="18" y="2" width="14" height="28" rx="4" fill="#00e05a" filter="url(#nzGlow)"/>
+            <polygon points="25,58 4,28 46,28" fill="#00e05a" filter="url(#nzGlow)"/>
+            <rect x="21" y="4" width="5" height="20" rx="2" fill="rgba(255,255,255,0.35)"/>
+        </svg>`;
+    el.appendChild(inner);
+    return el;
+}
+
+function updateNextZoneMarker() {
+    const audioZones = zones.filter(z => z.type === "audio");
+    const next = audioZones.find(z => !z.visited);
+
+    if (nextZoneMarker) { nextZoneMarker.remove(); nextZoneMarker = null; }
+    if (!next || !map) return;
+
+    const lngLat = [next.lng, next.lat];
+    const el = createNextZoneArrowEl();
+
+    nextZoneMarker = new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -20] })
+        .setLngLat(lngLat)
+        .addTo(map);
+}
+
+/* ========================================================
+   ===================== AUDIO ZONES =======================
+   ======================================================== */
 
 function playZoneAudio(src, id) {
     window.__currentZoneId = id;
     if (!audioEnabled) audioEnabled = true;
     globalAudio.src = src;
     globalAudio.currentTime = 0;
-    setupPhotoTimingsForAudio(globalAudio, id);
     globalAudio.play().catch(() => {});
     audioPlaying = true;
     globalAudio.onended = () => { audioPlaying = false; };
 }
 
-/* === ОБНОВЛЕНИЕ ЦВЕТА КРУГОВ === */
 function updateCircleColors() {
     const circleSource = map.getSource("audio-circles");
     if (!circleSource) return;
     circleSource.setData({
         type: "FeatureCollection",
-        features: zones.map(z => ({
-            type: "Feature",
-            properties: { id: z.id, visited: z.visited ? 1 : 0 },
-            geometry: { type: "Point", coordinates: [z.lng, z.lat] }
-        }))
+        features: zones
+            .filter(z => z.type === "audio")
+            .map(z => ({
+                type: "Feature",
+                properties: { id: z.id, visited: z.visited ? 1 : 0 },
+                geometry: { type: "Point", coordinates: [z.lng, z.lat] }
+            }))
     });
-}
-
-/* ========================================================
-   ===================== ZONE CHECK ========================
-   ======================================================== */
-
-function pointInPolygon(point, polygon) {
-    const x = point[1], y = point[0];
-    let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i][0], yi = polygon[i][1];
-        const xj = polygon[j][0], yj = polygon[j][1];
-        if (((yi > y) !== (yj > y)) &&
-            (x < (xj - xi) * (y - yi) / (yj - yi + 0.0000001) + xi))
-            inside = !inside;
-    }
-    return inside;
 }
 
 function checkZones(coords) {
     zones.forEach(z => {
         if (z.type !== "audio") return;
-        let inside = false;
-        if (z.shape === "polygon" && Array.isArray(z.polygon)) {
-            inside = pointInPolygon([coords[0], coords[1]], z.polygon);
-        } else {
-            inside = distance(coords, [z.lat, z.lng]) <= z.radius;
-        }
+        const inside = distance(coords, [z.lat, z.lng]) <= z.radius;
         if (!z.visited && inside) {
             z.visited = true;
-            const audioZonesList = zones.filter(a => a.type === "audio");
-            const idx = audioZonesList.findIndex(a => a.id === z.id);
-            const next = audioZonesList[idx + 1];
-            if (next && !next.preloadTriggered) {
-                next.preloadTriggered = true;
-                if (next.audio) queuePreload([next.audio], next.id);
-            }
             visitedAudioZones++;
             updateProgress();
             updateCircleColors();
-            if (z.audio) {
-                preloadAllMediaForCurrentAudio(z.audio);
-                playZoneAudio(z.audio, z.id);
-            }
+            updateNextZoneMarker();
+            if (z.audio) playZoneAudio(z.audio, z.id);
         }
     });
-}
-
-/* ========================================================
-   ===================== SUPER DEBUG =======================
-   ======================================================== */
-
-function ensureSuperDebug() {
-    let dbg = document.getElementById("superDebug");
-    if (!dbg) {
-        dbg = document.createElement("div");
-        dbg.id = "superDebug";
-        Object.assign(dbg.style, {
-            position: "fixed", bottom: "0", left: "0", width: "100%",
-            padding: "8px 10px", background: "rgba(0,0,0,0.75)", color: "white",
-            fontSize: "12px", fontFamily: "monospace", zIndex: "99999",
-            whiteSpace: "pre-line", display: "block"
-        });
-        document.body.appendChild(dbg);
-    }
-    return dbg;
-}
-
-function debugUpdate(source, angle, error = "none") {
-    const dbg = ensureSuperDebug();
-    if (!arrowEl) { dbg.textContent = "NO ARROW ELEMENT"; return; }
-    const tr = arrowEl.style.transform || "none";
-    let computed = "none";
-    try { computed = window.getComputedStyle(arrowEl).transform; } catch (e) { computed = "error"; }
-    const rect = arrowEl.getBoundingClientRect();
-    const routeDistStr = (lastRouteDist == null) ? "n/a" : `${lastRouteDist.toFixed(1)}m`;
-    const routeSegStr  = (lastRouteSegmentIndex == null) ? "n/a" : `${lastRouteSegmentIndex}`;
-    dbg.textContent =
-`SRC: ${source} | ANG: ${isNaN(angle) ? "NaN" : Math.round(angle)}° | ERR: ${error}
-
---- TRANSFORM ---
-SET:   ${tr}
-COMP:  ${computed}
-
---- LAYOUT ---
-offset: ${arrowEl.offsetWidth}x${arrowEl.offsetHeight}
-BOX:    x:${rect.x.toFixed(1)}, y:${rect.y.toFixed(1)}, w:${rect.width.toFixed(1)}, h:${rect.height.toFixed(1)}
-
---- STATE ---
-CMP: ${compassActive ? "active" : "inactive"} | H: ${Math.round(smoothAngle)}° | UPD: ${compassUpdates}
-GPS: ${gpsActive ? "on" : "off"} | GPS_ANG: ${gpsAngleLast} | GPS_UPD: ${gpsUpdates}
-
---- MAP / ROUTE ---
-routeDist: ${routeDistStr} | seg: ${routeSegStr}
-
---- ZONE ---
-${lastZoneDebug || "none"}
-
---- PNG ---
-arrow=${arrowPngStatus}, icons=${iconsPngStatus}
-`;
-}
-
-/* ========================================================
-   ===================== COMPASS LOGIC =====================
-   ======================================================== */
-
-function handleIOSCompass(e) {
-    if (!compassActive || !map || !arrowEl) return;
-    if (e.webkitCompassHeading == null) { debugUpdate("compass", NaN, "NO_HEADING"); return; }
-    const raw = normalizeAngle(e.webkitCompassHeading);
-    smoothAngle = normalizeAngle(0.8 * smoothAngle + 0.2 * raw);
-    compassUpdates++;
-    lastMapBearing = (typeof map.getBearing === "function") ? map.getBearing() : 0;
-    lastCorrectedAngle = normalizeAngle(smoothAngle - lastMapBearing);
-    applyArrowTransform(lastCorrectedAngle);
-    if (followMode && lastCoords) {
-        map.easeTo({ center: [lastCoords[1], lastCoords[0]], bearing: smoothAngle, duration: 300 });
-    }
-    debugUpdate("compass", lastCorrectedAngle);
-}
-
-function startCompass() {
-    compassActive = true;
-    if (typeof DeviceOrientationEvent !== "undefined" &&
-        typeof DeviceOrientationEvent.requestPermission === "function") {
-        DeviceOrientationEvent.requestPermission()
-            .then(state => {
-                if (state === "granted") window.addEventListener("deviceorientation", handleIOSCompass);
-                else debugUpdate("compass", NaN, "PERMISSION_DENIED");
-            })
-            .catch(() => debugUpdate("compass", NaN, "PERMISSION_ERROR"));
-        return;
-    }
-    debugUpdate("compass", NaN, "IOS_ONLY");
 }
 
 /* ========================================================
@@ -365,13 +494,11 @@ function applyArrowTransform(angle) {
     const a = isNaN(angle) ? 0 : angle;
     arrowEl.style.transform = `translate(-50%, -50%) rotate(${a}deg)`;
     arrowEl.style.visibility = "visible";
-    arrowEl.style.willChange = "transform";
 }
 
 function handleMapMove() {
     if (!lastCoords) return;
     updateArrowPositionFromCoords(lastCoords);
-    debugUpdate(compassActive ? "compass" : "gps", compassActive ? lastCorrectedAngle : gpsAngleLast);
 }
 
 /* ========================================================
@@ -381,37 +508,21 @@ function handleMapMove() {
 function simulateAudioZone(id) {
     const z = zones.find(z => z.id === id && z.type === "audio");
     if (!z) return;
-
-    if (!window.__simUserGestureBound) {
-        window.__simUserGestureBound = true;
-        document.body.addEventListener("click", () => { globalAudio.play().catch(() => {}); }, { once: true });
-    }
-
-    if (!z.visited) {
-        z.visited = true;
-        visitedAudioZones++;
-        updateProgress();
-    }
-
-    // === FIX: перекрашиваем СРАЗУ после visited = true ===
+    if (!z.visited) { z.visited = true; visitedAudioZones++; updateProgress(); }
     updateCircleColors();
-
+    updateNextZoneMarker();
     if (z.audio) {
         window.__currentZoneId = id;
         if (!audioEnabled) audioEnabled = true;
-        preloadAllMediaForCurrentAudio(z.audio);
         globalAudio.pause();
         globalAudio.removeAttribute("src");
         globalAudio.load();
         globalAudio.src = z.audio;
         globalAudio.currentTime = 0;
-        setupPhotoTimingsForAudio(globalAudio, id);
         globalAudio.play().catch(() => {});
         audioPlaying = true;
         globalAudio.onended = () => { audioPlaying = false; };
     }
-
-    console.log("Simulated audio zone:", id);
 }
 
 /* ========================================================
@@ -420,7 +531,7 @@ function simulateAudioZone(id) {
 
 let smoothMoving = false;
 
-async function smoothMoveTo(target, steps = 12, delay = 50) {
+async function smoothMoveTo(target, steps = 20, delay = 30) {
     if (!lastCoords) { moveMarker(target); return; }
     if (smoothMoving) return;
     smoothMoving = true;
@@ -452,17 +563,15 @@ function moveMarker(coords) {
         }
     }
 
-    /* === ЧАСТИЧНАЯ ПЕРЕКРАСКА МАРШРУТА === */
-    let nearestIndex = null, nearestDist = Infinity, nearestProj = null, nearestT = 0;
+    let nearestIndex = null, nearestDist = Infinity, nearestProj = null;
     for (let i = 0; i < fullRoute.length - 1; i++) {
         const a = fullRoute[i].coord, b = fullRoute[i + 1].coord;
         const info = pointToSegmentInfo([coords[0], coords[1]], a, b);
         if (info.dist < nearestDist) {
-            nearestDist = info.dist; nearestIndex = i;
-            nearestProj = info.projLngLat; nearestT = info.t;
+            nearestDist = info.dist; nearestIndex = i; nearestProj = info.projLngLat;
         }
     }
-    if (nearestDist > 12) return;
+    if (nearestDist > 12) { checkZones(coords); return; }
 
     const passedCoords = [], remainingCoords = [];
     for (let i = 0; i < nearestIndex; i++) {
@@ -474,340 +583,67 @@ function moveMarker(coords) {
         remainingCoords.push(fullRoute[i].coord, fullRoute[i + 1].coord);
     }
 
-    map.getSource("route-passed")   ?.setData({ type: "Feature", geometry: { type: "LineString", coordinates: passedCoords } });
+    map.getSource("route-passed")?.setData({ type: "Feature", geometry: { type: "LineString", coordinates: passedCoords } });
     map.getSource("route-remaining")?.setData({ type: "Feature", geometry: { type: "LineString", coordinates: remainingCoords } });
 
     checkZones(coords);
-    debugUpdate(compassActive ? "compass" : "gps", compassActive ? lastCorrectedAngle : gpsAngleLast);
 }
 
 /* ========================================================
-   ================== SIMULATION STEP ======================
+   ===================== COMPASS LOGIC =====================
    ======================================================== */
 
-function simulateNextStep() {
-    if (!simulationActive) return;
-    if (audioPlaying) { setTimeout(simulateNextStep, 300); return; }
-    if (simulationIndex >= simulationPoints.length) {
-        simulationActive = false; gpsActive = true; return;
+function handleIOSCompass(e) {
+    if (!compassActive || !map || !arrowEl) return;
+    if (e.webkitCompassHeading == null) return;
+    const raw = normalizeAngle(e.webkitCompassHeading);
+    smoothAngle = normalizeAngle(0.8 * smoothAngle + 0.2 * raw);
+    compassUpdates++;
+    lastMapBearing = map.getBearing ? map.getBearing() : 0;
+    lastCorrectedAngle = normalizeAngle(smoothAngle - lastMapBearing);
+    applyArrowTransform(lastCorrectedAngle);
+    if (followMode && lastCoords) {
+        map.easeTo({ center: [lastCoords[1], lastCoords[0]], bearing: smoothAngle, duration: 300 });
     }
-    moveMarker(simulationPoints[simulationIndex]);
-    simulationIndex++;
-    setTimeout(simulateNextStep, 1200);
-}
-
-function startSimulation() {
-    if (!simulationPoints.length) return;
-    simulationActive = true; gpsActive = false; compassActive = false;
-    simulationIndex = 0;
-    moveMarker(simulationPoints[0]);
-    map.easeTo({ center: [simulationPoints[0][1], simulationPoints[0][0]], duration: 500 });
-    setTimeout(simulateNextStep, 1200);
 }
 
 /* ========================================================
-   ========= OSRM: ПРИВЯЗКА ТОЧКИ К ДОРОГЕ ================
-   (nearest endpoint — мгновенно, без Overpass)
+   ===== OSRM: SNAP + ROUTE ================================
    ======================================================== */
 
-/**
- * Привязывает [lng, lat] к ближайшей пешеходной точке через OSRM nearest.
- * Возвращает [lng, lat] — уже на дороге/тротуаре, не на здании.
- */
 async function snapToOSRM(lngLat) {
     const [lng, lat] = lngLat;
-    const url = `https://router.project-osrm.org/nearest/v1/foot/${lng},${lat}?number=1`;
     try {
-        const res  = await fetch(url);
+        const res  = await fetch(`https://router.project-osrm.org/nearest/v1/foot/${lng},${lat}?number=1`);
         const json = await res.json();
-        if (json.waypoints && json.waypoints[0]) {
-            const loc = json.waypoints[0].location; // [lng, lat]
-            return loc;
-        }
+        if (json.waypoints?.[0]) return json.waypoints[0].location;
     } catch (e) { console.warn("OSRM nearest error:", e); }
-    return lngLat; // fallback — оставляем как есть
+    return lngLat;
 }
 
-/* ========================================================
-   ===== ГЕНЕРАЦИЯ 4 ТОЧЕК ВОКРУГ ПОЛЬЗОВАТЕЛЯ ============
-   (в 4 стороны света, ~60–100 м)
-   ======================================================== */
-
-/**
- * Генерирует 4 точки по compass-направлениям (N/E/S/W) на расстоянии ~80 м.
- * Потом каждую привязываем к ближайшей пешеходной зоне через OSRM.
- */
-function generateCardinalPoints(lat, lng, radius = 80) {
-    const R = 111320; // метров на градус широты
+// Уменьшаем радиус вдвое: было 80м → теперь 40м
+function generateCardinalPoints(lat, lng, radius = 40) {
+    const R = 111320;
     return [
-        [lng,                          lat + radius / R],              // Север
-        [lng + radius / (R * Math.cos(lat * Math.PI / 180)), lat],     // Восток
-        [lng,                          lat - radius / R],              // Юг
-        [lng - radius / (R * Math.cos(lat * Math.PI / 180)), lat],     // Запад
+        [lng,                          lat + radius / R],
+        [lng + radius / (R * Math.cos(lat * Math.PI / 180)), lat],
+        [lng,                          lat - radius / R],
+        [lng - radius / (R * Math.cos(lat * Math.PI / 180)), lat],
     ];
 }
 
-/* ========================================================
-   ===== OSRM ROUTE: СТРОИМ МАРШРУТ ЧЕРЕЗ N ТОЧЕК =========
-   ======================================================== */
-
-/**
- * Строит пешеходный маршрут через массив [lng, lat] точек через OSRM.
- * Возвращает массив координат [[lng, lat], ...].
- */
 async function buildOSRMRoute(points) {
     const coordStr = points.map(p => `${p[0]},${p[1]}`).join(";");
-    const url = `https://router.project-osrm.org/route/v1/foot/${coordStr}?overview=full&geometries=geojson`;
     try {
-        const res  = await fetch(url);
+        const res  = await fetch(`https://router.project-osrm.org/route/v1/foot/${coordStr}?overview=full&geometries=geojson`);
         const json = await res.json();
-        if (json.routes && json.routes[0]) {
-            return json.routes[0].geometry.coordinates; // [[lng, lat], ...]
-        }
+        if (json.routes?.[0]) return json.routes[0].geometry.coordinates;
     } catch (e) { console.warn("OSRM route error:", e); }
-    // Fallback — прямые линии
     return points;
 }
 
 /* ========================================================
-   ========== ПОКАЗЫВАЕМ ЗАГЛУШКУ ДО ЗАГРУЗКИ ЗОН =========
-   ======================================================== */
-
-function showLoadingZones() {
-    const el = document.getElementById("zonesLoadingMsg");
-    if (el) { el.style.display = "block"; }
-}
-function hideLoadingZones() {
-    const el = document.getElementById("zonesLoadingMsg");
-    if (el) { el.style.display = "none"; }
-}
-
-/* ========================================================
-   ===== ОСНОВНАЯ ФУНКЦИЯ: СПАВН ЗОН + МАРШРУТ ============
-   ======================================================== */
-
-/**
- * Принимает GPS-координаты пользователя [lat, lng].
- * 1. Генерирует 4 точки в 4 стороны света
- * 2. Параллельно привязывает все 4 + старт к OSRM nearest (foot)
- * 3. Строит маршрут: user → з1 → з2 → з3 → з4
- * 4. Рисует зоны и маршрут на карте
- */
-async function spawnDynamicZones(userLat, userLng) {
-    showLoadingZones();
-
-    const userLngLat = [userLng, userLat];
-
-    // === 1. Генерируем сырые точки ===
-    const rawPoints = generateCardinalPoints(userLat, userLng, 80);
-
-    // === 2. Параллельный snap всех точек (включая пользователя) ===
-    const [snappedUser, ...snappedZones] = await Promise.all([
-        snapToOSRM(userLngLat),
-        ...rawPoints.map(p => snapToOSRM(p))
-    ]);
-
-    // === 3. Строим маршрут: user → з1 → з2 → з3 → з4 ===
-    const routePoints = [snappedUser, ...snappedZones];
-    const routeCoords = await buildOSRMRoute(routePoints);
-
-    // === 4. Создаём зоны ===
-    zones = snappedZones.map((pt, i) => ({
-    id: i + 1,
-    type: "audio",
-    lat: pt[1],
-    lng: pt[0],
-    radius: 20,
-    visited: false,
-    audio: `audio/${i + 1}.m4a`
-}));
-
-    totalAudioZones = zones.length;
-    updateProgress();
-
-    // === 5. Добавляем источник кругов (с цветом visited/unvisited) ===
-    if (map.getSource("audio-circles")) {
-        map.getSource("audio-circles").setData({
-            type: "FeatureCollection",
-            features: zones.map(z => ({
-                type: "Feature",
-                properties: { id: z.id, visited: 0 },
-                geometry: { type: "Point", coordinates: [z.lng, z.lat] }
-            }))
-        });
-    } else {
-        map.addSource("audio-circles", {
-            type: "geojson",
-            data: {
-                type: "FeatureCollection",
-                features: zones.map(z => ({
-                    type: "Feature",
-                    properties: { id: z.id, visited: 0 },
-                    geometry: { type: "Point", coordinates: [z.lng, z.lat] }
-                }))
-            }
-        });
-
-        // Фон круга
-        map.addLayer({
-            id: "audio-circles-layer",
-            type: "circle",
-            source: "audio-circles",
-            paint: {
-                "circle-radius": 22,
-                // visited=1 → серый, visited=0 → синий
-                "circle-color": [
-                    "case",
-                    ["==", ["get", "visited"], 1], "rgba(120,120,120,0.25)",
-                    "rgba(0,122,255,0.18)"
-                ],
-                "circle-stroke-color": [
-                    "case",
-                    ["==", ["get", "visited"], 1], "rgba(120,120,120,0.5)",
-                    "rgba(0,122,255,0.7)"
-                ],
-                "circle-stroke-width": 2.5
-            }
-        });
-
-        // Клик по зоне → симуляция
-        map.on("click", "audio-circles-layer", (e) => {
-            const id = e.features[0].properties.id;
-            simulateAudioZone(id);
-        });
-
-        // Курсор-указатель при наведении
-        map.on("mouseenter", "audio-circles-layer", () => { map.getCanvas().style.cursor = "pointer"; });
-        map.on("mouseleave", "audio-circles-layer", () => { map.getCanvas().style.cursor = ""; });
-    }
-
-    // === 6. Добавляем маршрут ===
-    fullRoute = routeCoords.map(c => ({ coord: [c[0], c[1]] }));
-
-    // Удаляем старые слои/источники если есть
-    ["route-remaining", "route-passed"].forEach(id => {
-        if (map.getLayer(id + "-line")) map.removeLayer(id + "-line");
-        if (map.getSource(id)) map.removeSource(id);
-    });
-
-    map.addSource("route-remaining", {
-        type: "geojson",
-        data: { type: "Feature", geometry: { type: "LineString", coordinates: routeCoords } }
-    });
-    map.addSource("route-passed", {
-        type: "geojson",
-        data: { type: "Feature", geometry: { type: "LineString", coordinates: [] } }
-    });
-
-    map.addLayer({
-        id: "route-remaining-line", type: "line", source: "route-remaining",
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-width": 4, "line-color": "#007aff" }
-    });
-    map.addLayer({
-        id: "route-passed-line", type: "line", source: "route-passed",
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-width": 4, "line-color": "#555555" }
-    });
-
-    // === 7. Центрируем карту на пользователя ===
-    map.easeTo({ center: [userLng, userLat], zoom: 17, duration: 800 });
-
-    hideLoadingZones();
-    console.log("✅ Зоны и маршрут готовы за ~", performance.now().toFixed(0), "мс");
-}
-
-/* ========================================================
-   ========================= INIT MAP =====================
-   ======================================================== */
-
-async function initMap() {
-    map = new maplibregl.Map({
-        container: "map",
-        style: "style.json?v=2",
-        center: [49.12169747999815, 55.7872919881855],
-        zoom: 12,
-        bearing: -141.20322070183164
-    });
-
-    const mapContainer = document.getElementById("map");
-    if (mapContainer && getComputedStyle(mapContainer).position === "static") {
-        mapContainer.style.position = "relative";
-    }
-
-    map.on("load", async () => {
-        globalAudio = document.getElementById("globalAudio");
-        globalAudio.muted = false;
-        globalAudio.autoplay = true;
-        globalAudio.load();
-
-        // === Touch / follow mode ===
-        map.getCanvas().addEventListener("pointerdown", () => {
-            userTouching = true; followMode = false;
-            if (followTimeout) clearTimeout(followTimeout);
-        });
-        map.getCanvas().addEventListener("pointerup", () => {
-            userTouching = false;
-            if (followTimeout) clearTimeout(followTimeout);
-            followTimeout = setTimeout(() => followMode = true, 3000);
-        });
-        map.getCanvas().addEventListener("pointercancel", () => {
-            userTouching = false;
-            if (followTimeout) clearTimeout(followTimeout);
-            followTimeout = setTimeout(() => followMode = true, 3000);
-        });
-        map.on("movestart", () => { userInteracting = true; });
-        map.on("moveend",   () => { userInteracting = false; });
-
-        // Удаляем старые route-слои если есть (legacy)
-        ["route", "route-line", "route-hack-line"].forEach(id => {
-            if (map.getLayer(id))   map.removeLayer(id);
-            if (map.getSource(id))  map.removeSource(id);
-        });
-
-        updateProgress();
-
-        /* === DOM-стрелка === */
-        arrowEl = document.createElement("div");
-        arrowEl.innerHTML = `
-<svg viewBox="0 0 100 100" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
-  <polygon points="50,5 90,95 50,75 10,95" fill="currentColor"/>
-</svg>`;
-        Object.assign(arrowEl.style, {
-            position: "absolute", left: "50%", top: "50%",
-            transformOrigin: "center center", pointerEvents: "none",
-            zIndex: "9999", color: "#00ff00"
-        });
-        applyArrowTransform(0);
-        (mapContainer || document.body).appendChild(arrowEl);
-
-        /* === GPS watchPosition (для реального трекинга) === */
-        if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(
-                pos => {
-                    if (!gpsActive) return;
-                    smoothMoveTo([pos.coords.latitude, pos.coords.longitude]);
-                },
-                err => console.log("GPS error:", err),
-                { enableHighAccuracy: true }
-            );
-        }
-
-        map.on("move", handleMapMove);
-        console.log("Карта готова");
-    });
-
-    /* === Галерея === */
-    const galleryOverlay = document.getElementById("galleryOverlay");
-    if (galleryOverlay) {
-        galleryOverlay.onclick = (e) => {
-            if (e.target === galleryOverlay) galleryOverlay.classList.add("hidden");
-        };
-    }
-}
-
-/* ========================================================
-   ====================== MEDIA MENU ======================
+   ================== MEDIA MENU ==========================
    ======================================================== */
 
 function openMediaMenu(p) {
@@ -821,11 +657,22 @@ function openMediaMenu(p) {
     titleEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;">
         <img src="${p.icon}" style="width:22px;height:22px;object-fit:contain;">
         <span>${p.title || ""}</span></div>`;
-    titleEl.style.cssText = "color:#ffffff;text-shadow:0 0 26px rgba(255,255,255,1)";
+    titleEl.style.cssText = "font-size:18px;margin-bottom:8px;color:#ffffff;text-shadow:0 0 26px rgba(255,255,255,1)";
 
     const descEl = document.getElementById("mmDesc");
     descEl.textContent = p.description || "";
-    descEl.style.cssText = "color:#ffffff;text-shadow:0 0 4px rgba(255,255,255,0.35)";
+    descEl.style.cssText = "font-size:14px;margin-bottom:16px;color:#ffffff;text-shadow:0 0 4px rgba(255,255,255,0.35)";
+
+    // Цена если есть
+    const priceEl = document.getElementById("mmPrice");
+    if (priceEl) {
+        if (p.priceMin && p.priceMax) {
+            priceEl.textContent = `🍴 ${p.priceMin} – ${p.priceMax} ₽`;
+            priceEl.style.display = "block";
+        } else {
+            priceEl.style.display = "none";
+        }
+    }
 
     const photoBtn = document.getElementById("mmPhotoBtn");
     const videoBtn = document.getElementById("mmVideoBtn");
@@ -880,6 +727,7 @@ function closeMediaMenuUniversal() {
     window.__mediaMenuMode = false;
     const overlay = document.getElementById("mediaMenuUniversal");
     const sheet   = document.getElementById("mediaMenuUniversalSheet");
+    if (!overlay || !sheet) return;
     sheet.style.transform = "translateY(100%)";
     setTimeout(() => { overlay.style.display = "none"; }, 250);
 }
@@ -901,7 +749,8 @@ function createMediaMenuUniversal() {
     });
     sheet.innerHTML = `
         <div id="mmTitle" style="font-size:18px;margin-bottom:8px;"></div>
-        <div id="mmDesc"  style="font-size:14px;margin-bottom:16px;"></div>
+        <div id="mmDesc"  style="font-size:14px;margin-bottom:8px;"></div>
+        <div id="mmPrice" style="display:none;font-size:15px;color:#ff9f0a;margin-bottom:16px;font-weight:500;"></div>
         <div style="height:1px;background:rgba(255,255,255,0.08);margin:12px 0;"></div>
         <button id="mmPhotoBtn" style="width:100%;padding:14px;font-size:16px;margin-bottom:10px;
             border-radius:10px;border:none;
@@ -911,19 +760,320 @@ function createMediaMenuUniversal() {
             border-radius:10px;border:none;
             background:linear-gradient(180deg,#0a84ff 0%,#0066cc 100%);
             color:#fff;font-weight:500;">Видео</button>
-        <div id="mmPreview" style="display:none;margin-top:16px;gap:10px;justify-content:center;"></div>`;
+        <div id="mmPreview" style="display:none;margin-top:16px;gap:10px;justify-content:center;flex-wrap:wrap;"></div>`;
     overlay.appendChild(sheet);
     document.body.appendChild(overlay);
     overlay.onclick = e => { if (e.target === overlay) closeMediaMenuUniversal(); };
 }
 
 /* ========================================================
-   ===================== iOS MEDIA UNLOCK =================
+   ====== DYNAMIC MEDIA ZONES — спавн между аудиозонами ===
    ======================================================== */
 
-let __audioUnlocked = false;
-let __videoUnlocked = false;
-let __audioContext  = null;
+// Определения трёх типов медиазон
+const MEDIA_ZONE_TYPES = [
+    {
+        key: "souvenir",
+        icon: "icons/chakchak.png",
+        title: "Сувенирный с дегустацией",
+        description: "Традиционные татарские сувениры и угощения",
+        priceMin: 200,
+        priceMax: 1500,
+        photos: [] // можно добавить потом
+    },
+    {
+        key: "stop",
+        icon: "icons/i1.png",
+        title: "Остановитесь здесь",
+        description: "Хорошее место чтобы остановиться и дослушать аудиорассказ",
+        photos: []
+    },
+    {
+        key: "attraction",
+        icon: "icons/kaush.png",
+        title: "Достопримечательность",
+        description: "Интересное место рядом. Пешком 2–3 минуты.",
+        photos: []
+    }
+];
+
+function spawnMediaZones(routeCoords, audioZonePositions) {
+    // Находим точки на маршруте между аудиозонами
+    // audioZonePositions = [[lng, lat], ...] — позиции аудиозон на маршруте
+    // Ставим по одной медиазоне примерно между каждой парой аудиозон
+
+    const mediaZonesData = [];
+
+    for (let i = 0; i < audioZonePositions.length - 1; i++) {
+        // Берём точку маршрута примерно посередине между зоной i и i+1
+        const startPt = audioZonePositions[i];
+        const endPt   = audioZonePositions[i + 1];
+
+        // Ищем ближайшую к середине точку маршрута
+        const midLng = (startPt[0] + endPt[0]) / 2;
+        const midLat = (startPt[1] + endPt[1]) / 2;
+
+        let bestDist = Infinity, bestCoord = [midLng, midLat];
+        routeCoords.forEach(c => {
+            const d = Math.hypot(c[0] - midLng, c[1] - midLat);
+            if (d < bestDist) { bestDist = d; bestCoord = c; }
+        });
+
+        const typeIdx = i % MEDIA_ZONE_TYPES.length;
+        const typeDef = MEDIA_ZONE_TYPES[typeIdx];
+
+        mediaZonesData.push({
+            id: `media_${i}`,
+            type: "mediaMenu",
+            lat: bestCoord[1],
+            lng: bestCoord[0],
+            icon: typeDef.icon,
+            title: typeDef.title,
+            description: typeDef.description,
+            priceMin: typeDef.priceMin || null,
+            priceMax: typeDef.priceMax || null,
+            photos: typeDef.photos || [],
+            video: null
+        });
+    }
+
+    // Добавляем медиазоны в zones[]
+    mediaZonesData.forEach(mz => {
+        zones.push(mz);
+
+        const el = document.createElement("img");
+        el.src = mz.icon;
+        el.style.width = "36px";
+        el.style.height = "36px";
+        el.style.cursor = "pointer";
+        el.style.filter = "drop-shadow(0 2px 6px rgba(0,0,0,0.5))";
+        el.onclick = () => openMediaMenu(mz);
+
+        new maplibregl.Marker({ element: el, anchor: "center" })
+            .setLngLat([mz.lng, mz.lat])
+            .addTo(map);
+    });
+
+    console.log(`✅ Спавнено ${mediaZonesData.length} медиазон`);
+}
+
+/* ========================================================
+   ===== ОСНОВНАЯ ФУНКЦИЯ: СПАВН ЗОН + МАРШРУТ ============
+   ======================================================== */
+
+function showLoadingZones() {
+    const el = document.getElementById("zonesLoadingMsg");
+    if (el) el.style.display = "block";
+}
+function hideLoadingZones() {
+    const el = document.getElementById("zonesLoadingMsg");
+    if (el) el.style.display = "none";
+}
+
+async function spawnDynamicZones(userLat, userLng) {
+    showLoadingZones();
+
+    const userLngLat = [userLng, userLat];
+    const rawPoints = generateCardinalPoints(userLat, userLng, 40); // 40м
+
+    const [snappedUser, ...snappedZones] = await Promise.all([
+        snapToOSRM(userLngLat),
+        ...rawPoints.map(p => snapToOSRM(p))
+    ]);
+
+    const routePoints = [snappedUser, ...snappedZones];
+    const routeCoords = await buildOSRMRoute(routePoints);
+
+    // Аудиозоны — радиус триггера 10м (было 20)
+    const audioZones = snappedZones.map((pt, i) => ({
+        id: i + 1,
+        type: "audio",
+        lat: pt[1],
+        lng: pt[0],
+        radius: 10,
+        visited: false,
+        audio: `audio/${i + 1}.m4a`
+    }));
+
+    zones = [...audioZones];
+    totalAudioZones = audioZones.length;
+    updateProgress();
+
+    // Аудиокружки — красные → зелёные как в чистовике
+    if (map.getSource("audio-circles")) {
+        map.getSource("audio-circles").setData({
+            type: "FeatureCollection",
+            features: audioZones.map(z => ({
+                type: "Feature",
+                properties: { id: z.id, visited: 0 },
+                geometry: { type: "Point", coordinates: [z.lng, z.lat] }
+            }))
+        });
+    } else {
+        map.addSource("audio-circles", {
+            type: "geojson",
+            data: {
+                type: "FeatureCollection",
+                features: audioZones.map(z => ({
+                    type: "Feature",
+                    properties: { id: z.id, visited: 0 },
+                    geometry: { type: "Point", coordinates: [z.lng, z.lat] }
+                }))
+            }
+        });
+
+        map.addLayer({
+            id: "audio-circles-layer",
+            type: "circle",
+            source: "audio-circles",
+            paint: {
+                "circle-radius": 18,
+                "circle-color": [
+                    "case",
+                    ["==", ["get", "visited"], 1], "rgba(0,255,0,0.25)",
+                    "rgba(255,0,0,0.15)"
+                ],
+                "circle-stroke-color": [
+                    "case",
+                    ["==", ["get", "visited"], 1], "rgba(0,255,0,0.6)",
+                    "rgba(255,0,0,0.4)"
+                ],
+                "circle-stroke-width": 2
+            }
+        });
+
+        map.on("click", "audio-circles-layer", e => {
+            simulateAudioZone(e.features[0].properties.id);
+        });
+        map.on("mouseenter", "audio-circles-layer", () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", "audio-circles-layer", () => { map.getCanvas().style.cursor = ""; });
+    }
+
+    // Маршрут
+    fullRoute = routeCoords.map(c => ({ coord: [c[0], c[1]] }));
+
+    ["route-remaining", "route-passed"].forEach(id => {
+        if (map.getLayer(id + "-line")) map.removeLayer(id + "-line");
+        if (map.getSource(id)) map.removeSource(id);
+    });
+
+    map.addSource("route-remaining", {
+        type: "geojson",
+        data: { type: "Feature", geometry: { type: "LineString", coordinates: routeCoords } }
+    });
+    map.addSource("route-passed", {
+        type: "geojson",
+        data: { type: "Feature", geometry: { type: "LineString", coordinates: [] } }
+    });
+    map.addLayer({
+        id: "route-remaining-line", type: "line", source: "route-remaining",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-width": 4, "line-color": "#007aff" }
+    });
+    map.addLayer({
+        id: "route-passed-line", type: "line", source: "route-passed",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-width": 4, "line-color": "#333333" }
+    });
+
+    // Медиазоны между аудиозонами
+    const audioPositions = snappedZones.map(pt => [pt[0], pt[1]]);
+    spawnMediaZones(routeCoords, audioPositions);
+
+    // Прыгающая стрелка — после того как карта долетела
+    map.easeTo({ center: [userLng, userLat], zoom: 17, duration: 800 });
+    map.once("moveend", () => updateNextZoneMarker());
+
+    hideLoadingZones();
+    console.log("✅ Зоны и маршрут готовы");
+}
+
+/* ========================================================
+   ========================= INIT MAP =====================
+   ======================================================== */
+
+async function initMap() {
+    map = new maplibregl.Map({
+        container: "map",
+        style: "style.json?v=2",
+        center: [49.12169747999815, 55.7872919881855],
+        zoom: 12,
+        bearing: -141.20322070183164
+    });
+
+    const mapContainer = document.getElementById("map");
+    if (mapContainer && getComputedStyle(mapContainer).position === "static") {
+        mapContainer.style.position = "relative";
+    }
+
+    map.on("load", async () => {
+        globalAudio = document.getElementById("globalAudio");
+        globalAudio.muted = false;
+        globalAudio.autoplay = true;
+        globalAudio.load();
+
+        map.getCanvas().addEventListener("pointerdown", () => {
+            userTouching = true; followMode = false;
+            if (followTimeout) clearTimeout(followTimeout);
+        });
+        map.getCanvas().addEventListener("pointerup", () => {
+            userTouching = false;
+            if (followTimeout) clearTimeout(followTimeout);
+            followTimeout = setTimeout(() => followMode = true, 3000);
+        });
+        map.getCanvas().addEventListener("pointercancel", () => {
+            userTouching = false;
+            if (followTimeout) clearTimeout(followTimeout);
+            followTimeout = setTimeout(() => followMode = true, 3000);
+        });
+        map.on("movestart", () => {});
+        map.on("moveend",   () => {});
+
+        updateProgress();
+
+        arrowEl = document.createElement("div");
+        arrowEl.innerHTML = `<svg viewBox="0 0 100 100" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="50,5 90,95 50,75 10,95" fill="currentColor"/>
+        </svg>`;
+        Object.assign(arrowEl.style, {
+            position: "absolute", left: "50%", top: "50%",
+            transformOrigin: "center center", pointerEvents: "none",
+            zIndex: "9999", color: "#00ff00"
+        });
+        applyArrowTransform(0);
+        (mapContainer || document.body).appendChild(arrowEl);
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(
+                pos => {
+                    if (!gpsActive) return;
+                    smoothMoveTo([pos.coords.latitude, pos.coords.longitude]);
+                },
+                err => console.log("GPS error:", err),
+                { enableHighAccuracy: true }
+            );
+        }
+
+        map.on("move", handleMapMove);
+        console.log("Карта готова");
+    });
+}
+
+/* ========================================================
+   ===================== iOS UNLOCK =======================
+   ======================================================== */
+
+async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try { __wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible') {
+        if (tourStarted && (!__wakeLock || __wakeLock.released)) await requestWakeLock();
+        if (__audioContext && __audioContext.state === 'suspended') __audioContext.resume().catch(() => {});
+    }
+});
 
 async function unlockAudioIOS() {
     if (__audioUnlocked) return;
@@ -934,7 +1084,7 @@ async function unlockAudioIOS() {
         const src = __audioContext.createBufferSource();
         src.buffer = buf; src.connect(__audioContext.destination); src.start(0);
         __audioUnlocked = true;
-    } catch (e) { console.warn("Audio unlock failed:", e); }
+    } catch (e) {}
 }
 
 async function unlockVideoIOS() {
@@ -947,7 +1097,7 @@ async function unlockVideoIOS() {
         v.src = "data:video/mp4;base64,";
         await v.play().catch(() => {});
         __videoUnlocked = true;
-    } catch (e) { console.warn("Video unlock failed:", e); }
+    } catch (e) {}
 }
 
 /* ========================================================
@@ -960,7 +1110,6 @@ if (startBtn) {
         tourStarted = true;
         gpsActive   = true;
 
-        /* === Компас === */
         try {
             compassActive = true;
             const isIOS     = typeof DeviceOrientationEvent !== "undefined" &&
@@ -972,47 +1121,34 @@ if (startBtn) {
                     .then(state => {
                         if (state === "granted")
                             window.addEventListener("deviceorientation", handleIOSCompass);
-                    })
-                    .catch(err => console.warn("iOS compass error:", err));
+                    }).catch(() => {});
             } else if (isAndroid) {
                 window.addEventListener("deviceorientation", e => {
                     if (!compassActive || e.alpha == null) return;
                     const raw = normalizeAngle(360 - e.alpha);
                     smoothAngle = normalizeAngle(0.8 * smoothAngle + 0.2 * raw);
                     compassUpdates++;
-                    lastMapBearing = (typeof map.getBearing === "function") ? map.getBearing() : 0;
+                    lastMapBearing = map.getBearing ? map.getBearing() : 0;
                     lastCorrectedAngle = normalizeAngle(smoothAngle - lastMapBearing);
                     applyArrowTransform(lastCorrectedAngle);
                     if (followMode && lastCoords)
                         map.easeTo({ center: [lastCoords[1], lastCoords[0]], bearing: smoothAngle, duration: 300 });
-                    debugUpdate("compass", lastCorrectedAngle);
                 });
             }
-        } catch (err) { console.warn("Compass error:", err); }
+        } catch (err) {}
 
-        /* === Media unlock === */
         unlockAudioIOS();
         unlockVideoIOS();
+        requestWakeLock();
 
-        /* === Стартовое аудио === */
         const intro = new Audio("audio/start.mp3");
         intro.play().catch(() => {});
 
         startBtn.style.display = "none";
-
-        /* ============================================================
-           ГЛАВНАЯ ЧАСТЬ: быстрый спавн зон
-           1. Получаем GPS одним watchPosition
-           2. Сразу показываем стрелку на карте
-           3. Спавним зоны и маршрут (~2–4 сек вместо 32)
-           ============================================================ */
-
-        // Показываем сообщение «Определяем позицию…»
         showLoadingZones();
 
         let userLat = null, userLng = null;
 
-        // Таймаут на получение GPS (5 сек) — если не пришло, берём центр карты
         const gpsPromise = new Promise(resolve => {
             const watchId = navigator.geolocation.watchPosition(
                 pos => {
@@ -1026,38 +1162,28 @@ if (startBtn) {
             );
         });
 
-        const timeoutPromise = new Promise(resolve => setTimeout(resolve, 5000));
-        await Promise.race([gpsPromise, timeoutPromise]);
+        await Promise.race([gpsPromise, new Promise(r => setTimeout(r, 5000))]);
 
-        // Fallback — центр карты (Казань)
         if (!userLat || !userLng) {
             const center = map.getCenter();
-            userLat = center.lat;
-            userLng = center.lng;
-            console.warn("GPS не получен — используем центр карты");
+            userLat = center.lat; userLng = center.lng;
         }
 
-        // Сразу ставим стрелку
         lastCoords = [userLat, userLng];
         updateArrowPositionFromCoords(lastCoords);
-
-        // Центрируем карту
         map.easeTo({ center: [userLng, userLat], zoom: 17, duration: 800 });
 
-        // Спавним зоны (snap + route — параллельно)
         await spawnDynamicZones(userLat, userLng);
     };
 }
 
 /* ========================================================
-   ===================== INIT DEBUG PANEL =================
+   ========================= INIT =========================
    ======================================================== */
 
 document.addEventListener("DOMContentLoaded", () => {
-    ensureSuperDebug();
-    debugUpdate("init", 0, "INIT");
+    showOnboarding(); // показываем онбординг при загрузке
     initMap();
 });
 
 /* ==================== END OF APP.JS ====================== */
-
