@@ -621,25 +621,107 @@ async function snapToOSRM(lngLat) {
     return lngLat;
 }
 
-// Уменьшаем радиус вдвое: было 80м → теперь 40м
-function generateCardinalPoints(lat, lng, radius = 40) {
-    const R = 111320;
-    return [
-        [lng,                          lat + radius / R],
-        [lng + radius / (R * Math.cos(lat * Math.PI / 180)), lat],
-        [lng,                          lat - radius / R],
-        [lng - radius / (R * Math.cos(lat * Math.PI / 180)), lat],
-    ];
-}
-
-async function buildOSRMRoute(points) {
-    const coordStr = points.map(p => `${p[0]},${p[1]}`).join(";");
+// Строим маршрут между двумя точками и возвращаем массив координат
+async function buildOSRMSegment(from, to) {
+    const coordStr = `${from[0]},${from[1]};${to[0]},${to[1]}`;
     try {
         const res  = await fetch(`https://router.project-osrm.org/route/v1/foot/${coordStr}?overview=full&geometries=geojson`);
         const json = await res.json();
         if (json.routes?.[0]) return json.routes[0].geometry.coordinates;
-    } catch (e) { console.warn("OSRM route error:", e); }
+    } catch (e) { console.warn("OSRM segment error:", e); }
+    return [from, to];
+}
+
+// Генерируем 4 аудиозоны линейно — строго на север от пользователя,
+// каждая следующая на ~50м дальше предыдущей
+function generateLinearAudioPoints(userLat, userLng, count = 4, spacingMeters = 50) {
+    const R = 111320;
+    const points = [];
+    for (let i = 0; i < count; i++) {
+        // Немного отклоняем по долготе чтобы не было идеальной прямой — выглядит естественнее
+        const latOffset = ((i + 1) * spacingMeters) / R;
+        const lngOffset = ((i % 2 === 0 ? 1 : -1) * 15) / (R * Math.cos(userLat * Math.PI / 180));
+        points.push([userLng + lngOffset, userLat + latOffset]);
+    }
     return points;
+}
+
+/* ========================================================
+   ====== DYNAMIC MEDIA ZONES — спавн рядом с маршрутом ===
+   ======================================================== */
+
+const MEDIA_ZONE_TYPES = [
+    {
+        key: "souvenir",
+        icon: "icons/chakchak.png",
+        title: "Сувенирный с дегустацией",
+        description: "Традиционные татарские сувениры и угощения",
+        priceMin: 200,
+        priceMax: 1500,
+        photos: []
+    },
+    {
+        key: "stop",
+        icon: "icons/i1.png",
+        title: "Остановитесь здесь",
+        description: "Хорошее место чтобы остановиться и дослушать аудиорассказ",
+        photos: []
+    },
+    {
+        key: "attraction",
+        icon: "icons/kaush.png",
+        title: "Достопримечательность",
+        description: "Интересное место рядом. Пешком 2–3 минуты.",
+        photos: []
+    }
+];
+
+function spawnMediaZones(userLat, userLng) {
+    // Медиазоны спавним просто рядом с местом проведения —
+    // не на маршруте, случайно разбросаны в радиусе 80–180м
+    const R = 111320;
+
+    const offsets = [
+        { dlat:  120, dlng:  80 },
+        { dlat: -60,  dlng: 150 },
+        { dlat:  80,  dlng: -120 },
+    ];
+
+    offsets.forEach((off, i) => {
+        const lat = userLat + off.dlat / R;
+        const lng = userLng + off.dlng / (R * Math.cos(userLat * Math.PI / 180));
+
+        const typeDef = MEDIA_ZONE_TYPES[i % MEDIA_ZONE_TYPES.length];
+
+        const mz = {
+            id: `media_${i}`,
+            type: "mediaMenu",
+            lat, lng,
+            icon: typeDef.icon,
+            title: typeDef.title,
+            description: typeDef.description,
+            priceMin: typeDef.priceMin || null,
+            priceMax: typeDef.priceMax || null,
+            photos: typeDef.photos || [],
+            video: null
+        };
+
+        zones.push(mz);
+
+        const el = document.createElement("img");
+        el.src = mz.icon;
+        el.style.width = "36px";
+        el.style.height = "36px";
+        el.style.cursor = "pointer";
+        el.style.filter = "drop-shadow(0 2px 6px rgba(0,0,0,0.5))";
+        el.onclick = () => openMediaMenu(mz);
+
+        new maplibregl.Marker({ element: el, anchor: "center" })
+            .setLngLat([mz.lng, mz.lat])
+            .addTo(map);
+    });
+
+    console.log("✅ Медиазоны расставлены");
 }
 
 /* ========================================================
@@ -767,97 +849,6 @@ function createMediaMenuUniversal() {
 }
 
 /* ========================================================
-   ====== DYNAMIC MEDIA ZONES — спавн между аудиозонами ===
-   ======================================================== */
-
-// Определения трёх типов медиазон
-const MEDIA_ZONE_TYPES = [
-    {
-        key: "souvenir",
-        icon: "icons/chakchak.png",
-        title: "Сувенирный с дегустацией",
-        description: "Традиционные татарские сувениры и угощения",
-        priceMin: 200,
-        priceMax: 1500,
-        photos: [] // можно добавить потом
-    },
-    {
-        key: "stop",
-        icon: "icons/i1.png",
-        title: "Остановитесь здесь",
-        description: "Хорошее место чтобы остановиться и дослушать аудиорассказ",
-        photos: []
-    },
-    {
-        key: "attraction",
-        icon: "icons/kaush.png",
-        title: "Достопримечательность",
-        description: "Интересное место рядом. Пешком 2–3 минуты.",
-        photos: []
-    }
-];
-
-function spawnMediaZones(routeCoords, audioZonePositions) {
-    // Находим точки на маршруте между аудиозонами
-    // audioZonePositions = [[lng, lat], ...] — позиции аудиозон на маршруте
-    // Ставим по одной медиазоне примерно между каждой парой аудиозон
-
-    const mediaZonesData = [];
-
-    for (let i = 0; i < audioZonePositions.length - 1; i++) {
-        // Берём точку маршрута примерно посередине между зоной i и i+1
-        const startPt = audioZonePositions[i];
-        const endPt   = audioZonePositions[i + 1];
-
-        // Ищем ближайшую к середине точку маршрута
-        const midLng = (startPt[0] + endPt[0]) / 2;
-        const midLat = (startPt[1] + endPt[1]) / 2;
-
-        let bestDist = Infinity, bestCoord = [midLng, midLat];
-        routeCoords.forEach(c => {
-            const d = Math.hypot(c[0] - midLng, c[1] - midLat);
-            if (d < bestDist) { bestDist = d; bestCoord = c; }
-        });
-
-        const typeIdx = i % MEDIA_ZONE_TYPES.length;
-        const typeDef = MEDIA_ZONE_TYPES[typeIdx];
-
-        mediaZonesData.push({
-            id: `media_${i}`,
-            type: "mediaMenu",
-            lat: bestCoord[1],
-            lng: bestCoord[0],
-            icon: typeDef.icon,
-            title: typeDef.title,
-            description: typeDef.description,
-            priceMin: typeDef.priceMin || null,
-            priceMax: typeDef.priceMax || null,
-            photos: typeDef.photos || [],
-            video: null
-        });
-    }
-
-    // Добавляем медиазоны в zones[]
-    mediaZonesData.forEach(mz => {
-        zones.push(mz);
-
-        const el = document.createElement("img");
-        el.src = mz.icon;
-        el.style.width = "36px";
-        el.style.height = "36px";
-        el.style.cursor = "pointer";
-        el.style.filter = "drop-shadow(0 2px 6px rgba(0,0,0,0.5))";
-        el.onclick = () => openMediaMenu(mz);
-
-        new maplibregl.Marker({ element: el, anchor: "center" })
-            .setLngLat([mz.lng, mz.lat])
-            .addTo(map);
-    });
-
-    console.log(`✅ Спавнено ${mediaZonesData.length} медиазон`);
-}
-
-/* ========================================================
    ===== ОСНОВНАЯ ФУНКЦИЯ: СПАВН ЗОН + МАРШРУТ ============
    ======================================================== */
 
@@ -873,24 +864,22 @@ function hideLoadingZones() {
 async function spawnDynamicZones(userLat, userLng) {
     showLoadingZones();
 
-    const userLngLat = [userLng, userLat];
-    const rawPoints = generateCardinalPoints(userLat, userLng, 40); // 40м
+    // 1. Генерируем 4 точки аудиозон линейно от пользователя
+    const rawPoints = generateLinearAudioPoints(userLat, userLng, 4, 50);
 
+    // 2. Снапаем пользователя и все зоны к ближайшей дороге
     const [snappedUser, ...snappedZones] = await Promise.all([
-        snapToOSRM(userLngLat),
+        snapToOSRM([userLng, userLat]),
         ...rawPoints.map(p => snapToOSRM(p))
     ]);
 
-    const routePoints = [snappedUser, ...snappedZones];
-    const routeCoords = await buildOSRMRoute(routePoints);
-
-    // Аудиозоны — радиус триггера 10м (было 20)
+    // 3. Аудиозоны
     const audioZones = snappedZones.map((pt, i) => ({
         id: i + 1,
         type: "audio",
         lat: pt[1],
         lng: pt[0],
-        radius: 10,
+        radius: 15,
         visited: false,
         audio: `audio/${i + 1}.m4a`
     }));
@@ -899,7 +888,26 @@ async function spawnDynamicZones(userLat, userLng) {
     totalAudioZones = audioZones.length;
     updateProgress();
 
-    // Аудиокружки — красные → зелёные как в чистовике
+    // 4. Строим маршрут СЕГМЕНТАМИ: я→1, 1→2, 2→3, 3→4
+    // Каждый сегмент — отдельный OSRM запрос, без кольца
+    const waypoints = [snappedUser, ...snappedZones];
+    const segmentCoords = await Promise.all(
+        waypoints.slice(0, -1).map((from, i) => buildOSRMSegment(from, waypoints[i + 1]))
+    );
+
+    // Склеиваем все сегменты в один fullRoute, без дублей стыков
+    const allRouteCoords = [];
+    segmentCoords.forEach((seg, i) => {
+        if (i === 0) {
+            allRouteCoords.push(...seg);
+        } else {
+            allRouteCoords.push(...seg.slice(1)); // первая точка = последняя предыдущего
+        }
+    });
+
+    fullRoute = allRouteCoords.map(c => ({ coord: [c[0], c[1]] }));
+
+    // 5. Рисуем слой аудиозон
     if (map.getSource("audio-circles")) {
         map.getSource("audio-circles").setData({
             type: "FeatureCollection",
@@ -949,9 +957,7 @@ async function spawnDynamicZones(userLat, userLng) {
         map.on("mouseleave", "audio-circles-layer", () => { map.getCanvas().style.cursor = ""; });
     }
 
-    // Маршрут
-    fullRoute = routeCoords.map(c => ({ coord: [c[0], c[1]] }));
-
+    // 6. Рисуем маршрут
     ["route-remaining", "route-passed"].forEach(id => {
         if (map.getLayer(id + "-line")) map.removeLayer(id + "-line");
         if (map.getSource(id)) map.removeSource(id);
@@ -959,7 +965,7 @@ async function spawnDynamicZones(userLat, userLng) {
 
     map.addSource("route-remaining", {
         type: "geojson",
-        data: { type: "Feature", geometry: { type: "LineString", coordinates: routeCoords } }
+        data: { type: "Feature", geometry: { type: "LineString", coordinates: allRouteCoords } }
     });
     map.addSource("route-passed", {
         type: "geojson",
@@ -976,16 +982,15 @@ async function spawnDynamicZones(userLat, userLng) {
         paint: { "line-width": 4, "line-color": "#333333" }
     });
 
-    // Медиазоны между аудиозонами
-    const audioPositions = snappedZones.map(pt => [pt[0], pt[1]]);
-    spawnMediaZones(routeCoords, audioPositions);
+    // 7. Медиазоны — рядом с местом, не на маршруте
+    spawnMediaZones(userLat, userLng);
 
-    // Прыгающая стрелка — после того как карта долетела
+    // 8. Камера и стрелка
     map.easeTo({ center: [userLng, userLat], zoom: 17, duration: 800 });
     map.once("moveend", () => updateNextZoneMarker());
 
     hideLoadingZones();
-    console.log("✅ Зоны и маршрут готовы");
+    console.log("✅ Линейный маршрут готов:", audioZones.length, "аудиозоны,", segmentCoords.length, "сегментов");
 }
 
 /* ========================================================
@@ -1124,9 +1129,22 @@ if (startBtn) {
                     }).catch(() => {});
             } else if (isAndroid) {
                 window.addEventListener("deviceorientation", e => {
-                    if (!compassActive || e.alpha == null) return;
-                    const raw = normalizeAngle(360 - e.alpha);
-                    smoothAngle = normalizeAngle(0.8 * smoothAngle + 0.2 * raw);
+                    if (!compassActive || e.alpha == null || e.beta == null || e.gamma == null) return;
+
+                    const toRad = Math.PI / 180;
+                    const alpha = e.alpha * toRad;
+                    const beta  = e.beta  * toRad;
+                    const gamma = e.gamma * toRad;
+
+                    const sa = Math.sin(alpha), ca = Math.cos(alpha);
+                    const sb = Math.sin(beta),  cb = Math.cos(beta);
+                    const sg = Math.sin(gamma), cg = Math.cos(gamma);
+
+                    const Vx = sa * sg - ca * sb * cg;
+                    const Vy = ca * sg + sa * sb * cg;
+
+                    const raw = normalizeAngle(Math.atan2(Vx, Vy) * (180 / Math.PI));
+                    smoothAngle = normalizeAngle(0.85 * smoothAngle + 0.15 * raw);
                     compassUpdates++;
                     lastMapBearing = map.getBearing ? map.getBearing() : 0;
                     lastCorrectedAngle = normalizeAngle(smoothAngle - lastMapBearing);
