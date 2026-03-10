@@ -614,7 +614,8 @@ function handleIOSCompass(e) {
 async function snapToOSRM(lngLat) {
     const [lng, lat] = lngLat;
     try {
-        const res  = await fetch(`https://router.project-osrm.org/nearest/v1/foot/${lng},${lat}?number=1`);
+        // foot профиль на routing.openstreetmap.de — честный пешеходный маршрут
+        const res  = await fetch(`https://routing.openstreetmap.de/routed-foot/nearest/v1/foot/${lng},${lat}?number=1`);
         const json = await res.json();
         if (json.waypoints?.[0]) return json.waypoints[0].location;
     } catch (e) { console.warn("OSRM nearest error:", e); }
@@ -625,10 +626,12 @@ async function snapToOSRM(lngLat) {
 async function buildOSRMSegment(from, to) {
     const coordStr = `${from[0]},${from[1]};${to[0]},${to[1]}`;
     try {
-        const res  = await fetch(`https://router.project-osrm.org/route/v1/foot/${coordStr}?overview=full&geometries=geojson`);
+        // foot профиль — только тротуары, пешеходные зоны, дворы
+        const res  = await fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coordStr}?overview=full&geometries=geojson`);
         const json = await res.json();
         if (json.routes?.[0]) return json.routes[0].geometry.coordinates;
     } catch (e) { console.warn("OSRM segment error:", e); }
+    // fallback — прямая линия
     return [from, to];
 }
 
