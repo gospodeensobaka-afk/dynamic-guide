@@ -4,30 +4,18 @@
 
 /* === PHOTO & VIDEO TIMINGS === */
 const photoTimings = {
-    "audio/1.m4a": {
-        3: { open: "images/shalyapin3.jpeg" }
-    },
-
-    "audio/2.m4a": {
-        3: { open: "images/vodnih.jpeg" }
-    }
-   
-  };
-
-const videoTimings = {
-   
-  "audio/2.m4a": {
-        10: { open: "videos/3d modelki.mp4", duration: 26000 }
-    },
-
-    "audio/3.m4a": {
-        5: { open: "videos/petrpanorama.mp4", duration: 7000 }
+    "audio/Demo2.m4a": {
+        8.14: { open: "images/arhivdemo.jpeg", duration: 2810 }
     }
 };
 
+const videoTimings = {
+    "audio/Demo4.m4a": {
+        16.48: { open: "videos/rickroll.mp4", duration: 12000 }
+    }
+};
 /* === MISSED MEDIA STORAGE === */
-let missedMedia = {}; // { zoneId: [ {type, src}, ... ] }
-// Плоская лента всех фото из последних 3 зон для свайпа
+let missedMedia = {};
 let galleryFlatPhotos = [];
 
 /* ========================================================
@@ -43,41 +31,41 @@ function setupPhotoTimingsForAudio(audio, zoneId) {
 
     if (!pTimings && !vTimings) return;
 
-   const shownPhoto = {};
-const shownVideo = {};
-let lastTime = 0;
+    const shownPhoto = {};
+    const shownVideo = {};
+    let lastTime = 0;
 
-audio.ontimeupdate = () => {
-    const current = audio.currentTime;
+    audio.ontimeupdate = () => {
+        const current = audio.currentTime;
 
-   // === PHOTOS ===
-if (pTimings) {
-    for (const timeStr in pTimings) {
-        const target = parseFloat(timeStr);
-        const cfg = pTimings[timeStr];
-
-        if (!shownPhoto[target] && lastTime < target && current >= target) {
-            shownPhoto[target] = true;
-            showFullscreenMedia(cfg.open, "photo", cfg.duration);
-        }
-    }
-}
-
-    // === VIDEOS ===
-    if (vTimings) {
-        for (const timeStr in vTimings) {
-            const target = parseFloat(timeStr);
-
-            if (!shownVideo[target] && lastTime < target && current >= target) {
-                shownVideo[target] = true;
-               const cfg = vTimings[timeStr];
-showFullscreenMedia(cfg.open, "video", cfg.duration);
+        // === PHOTOS ===
+        if (pTimings) {
+            for (const timeStr in pTimings) {
+                const target = parseFloat(timeStr);
+                const cfg = pTimings[timeStr];
+                if (!shownPhoto[target] && lastTime < target && current >= target) {
+                    shownPhoto[target] = true;
+                    tgLog("INFO", `PHOTO TIMING | t:${target}s | ${cfg.open.split("/").pop()}`);
+                    showFullscreenMedia(cfg.open, "photo", cfg.duration);
+                }
             }
         }
-    }
 
-    lastTime = current;
-};
+        // === VIDEOS ===
+        if (vTimings) {
+            for (const timeStr in vTimings) {
+                const target = parseFloat(timeStr);
+                if (!shownVideo[target] && lastTime < target && current >= target) {
+                    shownVideo[target] = true;
+                    const cfg = vTimings[timeStr];
+                    tgLog("INFO", `VIDEO TIMING | t:${target}s | ${cfg.open.split("/").pop()}`);
+                    showFullscreenMedia(cfg.open, "video", cfg.duration);
+                }
+            }
+        }
+
+        lastTime = current;
+    };
 }
 
 /* ========================================================
@@ -89,22 +77,25 @@ function showFullscreenMedia(src, type, duration = null) {
     let media = document.getElementById("fsMediaElement");
     let closeBtn = document.getElementById("fsMediaClose");
 
-    // === ГРУППИРУЕМ МЕДИА ПО ЗОНАМ ===
-  // === ГРУППИРУЕМ МЕДИА ПО ЗОНАМ (ТОЛЬКО ДЛЯ АУДИОЗОН) ===
-// НЕ добавляем фото в missedMedia, если оно открыто вручную из галереи
-if (!window.__openedFromGallery) {
-    if (window.__currentZoneId !== undefined && window.__currentZoneId !== null) {
-        if (!missedMedia[window.__currentZoneId]) {
-            missedMedia[window.__currentZoneId] = [];
-        }
+    // === ЕСЛИ НЕ ИЗ ГАЛЕРЕИ — сбрасываем галерею чтобы свайп не уходил в старые фото ===
+    if (!window.__openedFromGallery) {
+        window.__fsGallery = null;
+        window.__fsIndex = 0;
+    }
 
-        if (!missedMedia[window.__currentZoneId].some(m => m.src === src)) {
-            missedMedia[window.__currentZoneId].push({ type, src });
+    // === ГРУППИРУЕМ МЕДИА ПО ЗОНАМ (только для аудиозон, не из галереи) ===
+    if (!window.__openedFromGallery) {
+        if (window.__currentZoneId !== undefined && window.__currentZoneId !== null) {
+            if (!missedMedia[window.__currentZoneId]) {
+                missedMedia[window.__currentZoneId] = [];
+            }
+            if (!missedMedia[window.__currentZoneId].some(m => m.src === src)) {
+                missedMedia[window.__currentZoneId].push({ type, src });
+            }
         }
     }
-}
 
-
+    // === СОЗДАЁМ OVERLAY ЕСЛИ НЕТ ===
     if (!overlay) {
         overlay = document.createElement("div");
         overlay.id = "fsMediaOverlay";
@@ -140,148 +131,154 @@ if (!window.__openedFromGallery) {
         closeBtn.style.color = "white";
         closeBtn.style.fontSize = "24px";
         closeBtn.style.cursor = "pointer";
-        closeBtn.onclick = () => {
-            overlay.style.display = "none";
-        };
+        closeBtn.onclick = () => { overlay.style.display = "none"; };
         overlay.appendChild(closeBtn);
     }
 
     // === ПЕРЕКЛЮЧЕНИЕ ТИПА МЕДИА ===
-if (type === "video") {
-    const newVideo = document.createElement("video");
-    newVideo.id = "fsMediaElement";
-   if (window.__videoCache && window.__videoCache[src]) {
-    newVideo.src = window.__videoCache[src];
-} else {
-   if (window.__videoCache && window.__videoCache[src]) {
-    newVideo.src = window.__videoCache[src];
-} else {
-    newVideo.src = src;
-}
-}
-    newVideo.style.maxWidth = "100%";
-    newVideo.style.maxHeight = "100%";
+    if (type === "video") {
+        // FIX задержка: берём прогретый warmup элемент если есть
+        // FIX iOS затемнение: muted + autoplay + playsinline ДО вставки в DOM
+        const warmed = window.__videoWarmup && window.__videoWarmup[src];
+        let newVideo;
 
-    // === Универсальный кроссплатформенный фикс ===
-    newVideo.muted = true;        // видео без звука → iOS не ставит аудио на паузу
-    newVideo.playsInline = true;  // не открывать видео в системном плеере
-    newVideo.controls = true;     // можно оставить, Android/Windows не страдают
-
-    overlay.replaceChild(newVideo, media);
-    media = newVideo;
-
-    media.play().catch(() => {});
-} else {
-    if (media.tagName.toLowerCase() !== "img") {
-        const newImg = document.createElement("img");
-        newImg.id = "fsMediaElement";
-        newImg.style.maxWidth = "100%";
-        newImg.style.maxHeight = "100%";
-        overlay.replaceChild(newImg, media);
-        media = newImg;
-    }
-
-    // Скрываем фото до загрузки
-    media.style.opacity = "0";
-    media.style.transform = "translateX(0)";
-
-    media.onload = () => {
-        // Фото загрузилось → показываем плавно
-        media.style.transition = "opacity 0.15s ease";
-        media.style.opacity = "1";
-    };
-
-    media.src = src;
-}
-
-   
-// === СВАЙПЫ ДЛЯ ФОТО С АНИМАЦИЕЙ ===
-if (type === "photo") {
-    let startX = null;
-    let isDragging = false;
-
-    overlay.ontouchstart = (e) => {
-        startX = e.touches[0].clientX;
-        isDragging = true;
-        media.style.transition = "none";
-    };
-
-    overlay.ontouchmove = (e) => {
-        if (!isDragging) return;
-        const dx = e.touches[0].clientX - startX;
-        media.style.transform = `translateX(${dx}px)`;
-    };
-
-    overlay.ontouchend = (e) => {
-        if (!isDragging) return;
-        isDragging = false;
-
-        const endX = e.changedTouches[0].clientX;
-        const dx = endX - startX;
-
-        media.style.transition = "transform 0.25s ease";
-
-        if (!window.__fsGallery || window.__fsGallery.length < 2) {
-            media.style.transform = "translateX(0)";
-            return;
+        if (warmed) {
+            // Декодер уже разогрет — старт мгновенный
+            newVideo = warmed;
+            newVideo.style.cssText = "";
+            newVideo.style.maxWidth = "100%";
+            newVideo.style.maxHeight = "100%";
+            if (newVideo.parentNode && newVideo.parentNode !== overlay) {
+                newVideo.parentNode.removeChild(newVideo);
+            }
+            delete window.__videoWarmup[src];
+        } else {
+            newVideo = document.createElement("video");
+            newVideo.src = src;
+            newVideo.style.maxWidth = "100%";
+            newVideo.style.maxHeight = "100%";
         }
 
-        // свайп влево → следующее фото
-if (dx < -50 && window.__fsIndex < window.__fsGallery.length - 1) {
-    media.style.transform = "translateX(-100%)";
-    setTimeout(() => {
-        window.__openedFromGallery = true;   // ← ДОБАВИТЬ
-        window.__fsIndex++;
-        showFullscreenMedia(window.__fsGallery[window.__fsIndex], "photo");
-    }, 200);
-    return;
-}
+        // Всё это ДО replaceChild — иначе iOS затемняет
+        newVideo.id = "fsMediaElement";
+        newVideo.muted = true;
+        newVideo.playsInline = true;
+        newVideo.setAttribute("playsinline", "true");
+        newVideo.setAttribute("webkit-playsinline", "true");
+        newVideo.autoplay = true;
+        newVideo.controls = true;
+        newVideo.currentTime = 0;
 
-        // свайп вправо → предыдущее фото
-if (dx > 50 && window.__fsIndex > 0) {
-    media.style.transform = "translateX(100%)";
-    setTimeout(() => {
-        window.__openedFromGallery = true;   // ← ДОБАВИТЬ
-        window.__fsIndex--;
-        showFullscreenMedia(window.__fsGallery[window.__fsIndex], "photo");
-    }, 200);
-    return;
-}
+        overlay.replaceChild(newVideo, media);
+        media = newVideo;
 
-        // если свайп слабый — возвращаем назад
+        // rAF: iOS рендерит элемент до play() — убирает затемнение
+        requestAnimationFrame(() => {
+            media.play().catch(() => {});
+        });
+
+    } else {
+        // === ФОТО ===
+        if (media.tagName.toLowerCase() !== "img") {
+            const newImg = document.createElement("img");
+            newImg.id = "fsMediaElement";
+            newImg.style.maxWidth = "100%";
+            newImg.style.maxHeight = "100%";
+            overlay.replaceChild(newImg, media);
+            media = newImg;
+        }
+
+        media.style.opacity = "0";
         media.style.transform = "translateX(0)";
-    };
-}
-overlay.style.display = "flex";
+        media.onload = () => {
+            media.style.transition = "opacity 0.15s ease";
+            media.style.opacity = "1";
+        };
+        media.src = src;
+    }
 
-/* === ЕСЛИ ОТКРЫТО ИЗ ГАЛЕРЕИ — НЕ ЗАКРЫВАЕМ АВТО === */
-if (window.__openedFromGallery) {
-    // Сбрасываем флаг сразу после открытия
-    window.__openedFromGallery = false;
-    return;
-}
+    // === СВАЙПЫ ДЛЯ ФОТО ===
+    if (type === "photo") {
+        let startX = null;
+        let isDragging = false;
 
-/* === АВТОЗАКРЫТИЕ ПО DURATION (ТОЛЬКО ДЛЯ АУДИОТАЙМИНГОВ) === */
-if (duration) {
+        overlay.ontouchstart = (e) => {
+            startX = e.touches[0].clientX;
+            isDragging = true;
+            media.style.transition = "none";
+        };
+
+        overlay.ontouchmove = (e) => {
+            if (!isDragging) return;
+            const dx = e.touches[0].clientX - startX;
+            media.style.transform = `translateX(${dx}px)`;
+        };
+
+        overlay.ontouchend = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            const endX = e.changedTouches[0].clientX;
+            const dx = endX - startX;
+            media.style.transition = "transform 0.25s ease";
+
+            if (!window.__fsGallery || window.__fsGallery.length < 2) {
+                media.style.transform = "translateX(0)";
+                return;
+            }
+
+            if (dx < -50 && window.__fsIndex < window.__fsGallery.length - 1) {
+                media.style.transform = "translateX(-100%)";
+                setTimeout(() => {
+                    window.__openedFromGallery = true;
+                    window.__fsIndex++;
+                    showFullscreenMedia(window.__fsGallery[window.__fsIndex], "photo");
+                }, 200);
+                return;
+            }
+
+            if (dx > 50 && window.__fsIndex > 0) {
+                media.style.transform = "translateX(100%)";
+                setTimeout(() => {
+                    window.__openedFromGallery = true;
+                    window.__fsIndex--;
+                    showFullscreenMedia(window.__fsGallery[window.__fsIndex], "photo");
+                }, 200);
+                return;
+            }
+
+            media.style.transform = "translateX(0)";
+        };
+    }
+
+    overlay.style.display = "flex";
+
+    // === ЕСЛИ ОТКРЫТО ИЗ ГАЛЕРЕИ — НЕ ЗАКРЫВАЕМ АВТО ===
+    if (window.__openedFromGallery) {
+        window.__openedFromGallery = false;
+        return;
+    }
+
+    // === АВТОЗАКРЫТИЕ ПО DURATION ===
+    if (duration) {
+        setTimeout(() => {
+            if (overlay && overlay.style.display !== "none") {
+                overlay.style.display = "none";
+            }
+        }, duration);
+        return;
+    }
+
+    // === МЕДИАЗОНЫ: НЕ ЗАКРЫВАЕМ АВТО ===
+    if (window.__mediaMenuMode) {
+        return;
+    }
+
+    // === FALLBACK 3000 МС ===
     setTimeout(() => {
         if (overlay && overlay.style.display !== "none") {
             overlay.style.display = "none";
         }
-    }, duration);
-    return;
-}
-
-/* === МЕДИАЗОНЫ: НИКОГДА НЕ ЗАКРЫВАЕМ АВТО === */
-if (window.__mediaMenuMode) {
-    return;
-}
-
-/* === FALLBACK 3000 МС (ТОЛЬКО ДЛЯ АУДИОТАЙМИНГОВ) === */
-setTimeout(() => {
-    if (overlay && overlay.style.display !== "none") {
-        overlay.style.display = "none";
-    }
-}, 3000);
+    }, 3000);
 }
 
 /* ========================================================
@@ -295,106 +292,72 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!notReadyBtn || !galleryOverlay) return;
 
     notReadyBtn.onclick = () => {
-    // Полностью очищаем overlay
-    galleryOverlay.innerHTML = "";
+        galleryOverlay.innerHTML = "";
 
-    // Создаём новый track
-    const galleryTrack = document.createElement("div");
-    galleryTrack.id = "galleryTrack";
-    galleryTrack.style.display = "inline-flex";
-    galleryTrack.style.flexDirection = "row";
-    galleryTrack.style.gap = "12px";
-    galleryTrack.style.whiteSpace = "nowrap";
+        const galleryTrack = document.createElement("div");
+        galleryTrack.id = "galleryTrack";
+        galleryTrack.style.display = "inline-flex";
+        galleryTrack.style.flexDirection = "row";
+        galleryTrack.style.gap = "12px";
+        galleryTrack.style.whiteSpace = "nowrap";
+        galleryOverlay.appendChild(galleryTrack);
 
-    // Добавляем track в overlay
-    galleryOverlay.appendChild(galleryTrack);
+        const zoneIds = Object.keys(missedMedia)
+            .map(id => Number(id))
+            .sort((a, b) => b - a);
 
-    const zoneIds = Object.keys(missedMedia)
-        .map(id => Number(id))
-        .sort((a, b) => b - a);
+        const lastThree = zoneIds.slice(0, 3);
 
-    const lastThree = zoneIds.slice(0, 3);
-// Пересобираем общую ленту фото из последних 3 зон
-galleryFlatPhotos = [];
-lastThree.forEach(zoneId => {
-    const items = missedMedia[zoneId] || [];
-    items
-        .filter(m => m.type === "photo")
-        .forEach(m => galleryFlatPhotos.push(m.src));
-});
-    lastThree.forEach(zoneId => {
-        const items = missedMedia[zoneId];
-
-       
-
-        items.forEach(item => {
-            const thumb = document.createElement("div");
-            thumb.style.width = "100px";
-            thumb.style.height = "100px";
-            thumb.style.borderRadius = "10px";
-            thumb.style.overflow = "hidden";
-            thumb.style.cursor = "pointer";
-            thumb.style.background = "#000";
-            thumb.style.display = "inline-flex";
-            thumb.style.alignItems = "center";
-            thumb.style.justifyContent = "center";
-            thumb.style.marginRight = "10px";
-
-            if (item.type === "photo") {
-                const img = document.createElement("img");
-                img.src = item.src;
-                img.style.width = "100%";
-                img.style.height = "100%";
-                img.style.objectFit = "cover";
-                thumb.appendChild(img);
-            } else {
-                const icon = document.createElement("div");
-                icon.style.width = "0";
-                icon.style.height = "0";
-                icon.style.borderLeft = "20px solid white";
-                icon.style.borderTop = "12px solid transparent";
-                icon.style.borderBottom = "12px solid transparent";
-                thumb.appendChild(icon);
-            }
-
-           thumb.onclick = () => {
-    galleryOverlay.classList.add("hidden");
-    window.__openedFromGallery = true;
-
-    // Используем общую ленту всех фото из последних 3 зон
-    window.__fsGallery = galleryFlatPhotos;
-    window.__fsIndex = window.__fsGallery.indexOf(item.src);
-
-    showFullscreenMedia(item.src, item.type);
-};
-
-            galleryTrack.appendChild(thumb);
+        galleryFlatPhotos = [];
+        lastThree.forEach(zoneId => {
+            const items = missedMedia[zoneId] || [];
+            items.filter(m => m.type === "photo").forEach(m => galleryFlatPhotos.push(m.src));
         });
-    });
 
-    galleryOverlay.classList.remove("hidden");
-};
+        lastThree.forEach(zoneId => {
+            const items = missedMedia[zoneId];
+            items.forEach(item => {
+                const thumb = document.createElement("div");
+                thumb.style.width = "100px";
+                thumb.style.height = "100px";
+                thumb.style.borderRadius = "10px";
+                thumb.style.overflow = "hidden";
+                thumb.style.cursor = "pointer";
+                thumb.style.background = "#000";
+                thumb.style.display = "inline-flex";
+                thumb.style.alignItems = "center";
+                thumb.style.justifyContent = "center";
+                thumb.style.marginRight = "10px";
+
+                if (item.type === "photo") {
+                    const img = document.createElement("img");
+                    img.src = item.src;
+                    img.style.width = "100%";
+                    img.style.height = "100%";
+                    img.style.objectFit = "cover";
+                    thumb.appendChild(img);
+                } else {
+                    const icon = document.createElement("div");
+                    icon.style.width = "0";
+                    icon.style.height = "0";
+                    icon.style.borderLeft = "20px solid white";
+                    icon.style.borderTop = "12px solid transparent";
+                    icon.style.borderBottom = "12px solid transparent";
+                    thumb.appendChild(icon);
+                }
+
+                thumb.onclick = () => {
+                    galleryOverlay.classList.add("hidden");
+                    window.__openedFromGallery = true;
+                    window.__fsGallery = galleryFlatPhotos;
+                    window.__fsIndex = window.__fsGallery.indexOf(item.src);
+                    showFullscreenMedia(item.src, item.type);
+                };
+
+                galleryTrack.appendChild(thumb);
+            });
+        });
+
+        galleryOverlay.classList.remove("hidden");
+    };
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
