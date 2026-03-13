@@ -656,7 +656,7 @@ function generateLinearAudioPoints(userLat, userLng, count = 4, spacingMeters = 
 const MEDIA_ZONE_TYPES = [
     {
         key: "souvenir",
-        icon: "icons/chakchak.png",
+        icon: "icons/chakchak.webp",
         title: "Сувенирный с дегустацией",
         description: "Традиционные татарские сувениры и угощения",
         priceMin: 200,
@@ -665,14 +665,14 @@ const MEDIA_ZONE_TYPES = [
     },
     {
         key: "stop",
-        icon: "icons/i1.png",
+        icon: "icons/i1.webp",
         title: "Остановитесь здесь",
         description: "Хорошее место чтобы остановиться и дослушать аудиорассказ",
         photos: []
     },
     {
         key: "attraction",
-        icon: "icons/kaush.png",
+        icon: "icons/apanaevi.webp",
         title: "Достопримечательность",
         description: "Интересное место рядом. Пешком 2–3 минуты.",
         photos: []
@@ -1208,3 +1208,4 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ==================== END OF APP.JS ====================== */
+
