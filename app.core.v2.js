@@ -431,6 +431,9 @@ function playZoneAudio(src, id) {
     globalAudio.play().catch(() => {});
     audioPlaying = true;
     globalAudio.onended = () => { audioPlaying = false; };
+    if (typeof setupPhotoTimingsForAudio === "function") {
+        setupPhotoTimingsForAudio(globalAudio, id);
+    }
 }
 
 function updateCircleColors() {
@@ -507,7 +510,9 @@ function simulateAudioZone(id) {
         globalAudio.play().catch(() => {});
         audioPlaying = true;
         globalAudio.onended = () => { audioPlaying = false; };
-    }
+        if (typeof setupPhotoTimingsForAudio === "function") {
+            setupPhotoTimingsForAudio(globalAudio, id);
+        }
 }
 
 /* ========================================================
