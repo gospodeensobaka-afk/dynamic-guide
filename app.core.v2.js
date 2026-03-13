@@ -884,7 +884,7 @@ async function spawnDynamicZones(userLat, userLng) {
         lng: pt[0],
         radius: 15,
         visited: false,
-        audio: `audio/${i + 1}.m4a`
+        audio: `audio/Demo${i + 1}.m4a`
     }));
 
     zones = [...audioZones];
@@ -1208,4 +1208,5 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ==================== END OF APP.JS ====================== */
+
 
