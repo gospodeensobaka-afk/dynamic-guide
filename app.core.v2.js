@@ -445,6 +445,7 @@ function playZoneAudio(src, id) {
     globalAudio.currentTime = 0;
     globalAudio.play().catch(() => {});
     audioPlaying = true;
+    setupPhotoTimingsForAudio(globalAudio, id);
     globalAudio.onended = () => { audioPlaying = false; };
 }
 
@@ -521,6 +522,7 @@ function simulateAudioZone(id) {
         globalAudio.currentTime = 0;
         globalAudio.play().catch(() => {});
         audioPlaying = true;
+       setupPhotoTimingsForAudio(globalAudio, id);
         globalAudio.onended = () => { audioPlaying = false; };
     }
 }
@@ -1208,5 +1210,6 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ==================== END OF APP.JS ====================== */
+
 
 
