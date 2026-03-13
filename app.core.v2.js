@@ -635,11 +635,6 @@ async function buildOSRMSegment(from, to) {
    === ЛИНЕЙНАЯ ГЕНЕРАЦИЯ ЗОН ВДОЛЬ ПЕШЕХОДНОГО МАРШРУТА ==
    ======================================================== */
 
-/**
- * Берём count точек равномерно вдоль уже построенного OSRM-маршрута
- * с шагом spacingMeters. Точки гарантированно на пешеходных дорожках —
- * никаких проезжих частей и разброса в стороны.
- */
 function samplePointsAlongRoute(routeCoords, count, spacingMeters) {
     const result     = [];
     let accumulated  = 0;
@@ -665,7 +660,6 @@ function samplePointsAlongRoute(routeCoords, count, spacingMeters) {
             coordIdx++;
         }
 
-        // Если маршрут короче чем нужно — ставим точку в конец
         if (result.length < i + 1 && routeCoords.length > 0) {
             const last = routeCoords[routeCoords.length - 1];
             result.push([last[0], last[1]]);
@@ -706,43 +700,74 @@ const MEDIA_ZONE_TYPES = [
 ];
 
 function spawnMediaZones(routeCoords, userLat, userLng) {
-    // Медиазоны ставим прямо на маршрут — между аудиозонами
-    // Берём точки примерно на 25м, 75м, 125м от старта (между зонами)
-    const mediaSamplePoints = samplePointsAlongRoute(routeCoords, 3, 25);
+    // Берём 3 якорных точки вдоль маршрута с шагом 40м,
+    // затем смещаем каждую перпендикулярно маршруту на 10м,
+    // чередуя стороны: право → лево → право (красивый зигзаг по обе стороны тропы)
+    const onRoutePts = samplePointsAlongRoute(routeCoords, 3, 40);
 
-    mediaSamplePoints.forEach((pt, i) => {
+    onRoutePts.forEach((pt, i) => {
+        // Находим ближайший индекс в routeCoords — нужен для касательной
+        let bestIdx = 0, bestDist = Infinity;
+        for (let j = 0; j < routeCoords.length; j++) {
+            const d = Math.hypot(routeCoords[j][0] - pt[0], routeCoords[j][1] - pt[1]);
+            if (d < bestDist) { bestDist = d; bestIdx = j; }
+        }
+        const prev = routeCoords[Math.max(0, bestIdx - 1)];
+        const next = routeCoords[Math.min(routeCoords.length - 1, bestIdx + 1)];
+
+        // Касательный вектор вдоль маршрута (в единицах градусов lng/lat)
+        const tangentLng = next[0] - prev[0];
+        const tangentLat = next[1] - prev[1];
+
+        // Перпендикуляр: i=0 → право (+1), i=1 → лево (-1), i=2 → право (+1)
+        const side   = (i % 2 === 0) ? 1 : -1;
+        const perpLng = -tangentLat * side;
+        const perpLat =  tangentLng * side;
+
+        // Переводим перпендикулярный вектор из градусов в метры и нормализуем до OFFSET_M
+        const lat        = pt[1];
+        const mPerDegLat = 111320;
+        const mPerDegLng = 111320 * Math.cos(lat * Math.PI / 180);
+        const perpLenM   = Math.sqrt((perpLng * mPerDegLng) ** 2 + (perpLat * mPerDegLat) ** 2);
+
+        const OFFSET_M = 10; // метров от маршрута
+        const scale    = perpLenM > 0 ? OFFSET_M / perpLenM : 0;
+
+        const finalLng = pt[0] + perpLng * scale;
+        const finalLat = pt[1] + perpLat * scale;
+
         const typeDef = MEDIA_ZONE_TYPES[i % MEDIA_ZONE_TYPES.length];
 
         const mz = {
-            id: `media_${i}`,
-            type: "mediaMenu",
-            lat: pt[1],
-            lng: pt[0],
-            icon: typeDef.icon,
-            title: typeDef.title,
+            id:          `media_${i}`,
+            type:        "mediaMenu",
+            lat:         finalLat,
+            lng:         finalLng,
+            icon:        typeDef.icon,
+            title:       typeDef.title,
             description: typeDef.description,
-            priceMin: typeDef.priceMin || null,
-            priceMax: typeDef.priceMax || null,
-            photos: typeDef.photos || [],
-            video: null
+            priceMin:    typeDef.priceMin  || null,
+            priceMax:    typeDef.priceMax  || null,
+            photos:      typeDef.photos    || [],
+            video:       null
         };
 
         zones.push(mz);
 
-        const el       = document.createElement("img");
-        el.src         = mz.icon;
+        const el        = document.createElement("img");
+        el.src          = mz.icon;
         el.style.width  = "36px";
         el.style.height = "36px";
         el.style.cursor = "pointer";
         el.style.filter = "drop-shadow(0 2px 6px rgba(0,0,0,0.5))";
-        el.onclick = () => openMediaMenu(mz);
+        el.onclick      = () => openMediaMenu(mz);
 
         new maplibregl.Marker({ element: el, anchor: "center" })
             .setLngLat([mz.lng, mz.lat])
             .addTo(map);
     });
 
-    console.log("✅ Медиазоны расставлены вдоль маршрута");
+    console.log("✅ Медиазоны смещены перпендикулярно маршруту (±10м, зигзаг лево/право)");
 }
 
 /* ========================================================
@@ -884,26 +909,19 @@ function hideLoadingZones() {
 async function spawnDynamicZones(userLat, userLng) {
     showLoadingZones();
 
-    // 1. Снапаем пользователя к пешеходной дороге
     const snappedUser = await snapToOSRM([userLng, userLat]);
 
-    // 2. Строим «разведочный» маршрут вперёд:
-    //    берём точку ~300м на север как цель, OSRM прокладывает по тротуарам
-    const R           = 111320;
-    const probeTarget = [snappedUser[0], snappedUser[1] + 300 / R];
+    const R             = 111320;
+    const probeTarget   = [snappedUser[0], snappedUser[1] + 300 / R];
     const snappedTarget = await snapToOSRM(probeTarget);
     const probeRoute    = await buildOSRMSegment(snappedUser, snappedTarget);
 
-    // 3. Берём 4 точки равномерно вдоль маршрута с шагом 50м
-    //    Все точки строго на пешеходном пути — никакой проезжей части
     const zonePoints = samplePointsAlongRoute(probeRoute, 4, 50);
 
-    // Дополняем до 4 если маршрут оказался коротким
     while (zonePoints.length < 4) {
         zonePoints.push(snappedTarget);
     }
 
-    // 4. Аудиозоны — точки уже на пешеходном маршруте
     const audioZones = zonePoints.map((pt, i) => ({
         id:      i + 1,
         type:    "audio",
@@ -918,16 +936,12 @@ async function spawnDynamicZones(userLat, userLng) {
     totalAudioZones = audioZones.length;
     updateProgress();
 
-    // 5. Финальный маршрут от пользователя до последней зоны
-    //    Если probeRoute достаточно длинный — используем его напрямую,
-    //    иначе достраиваем до последней зоны
-    const lastPt       = zonePoints[zonePoints.length - 1];
-    const finalRoute   = await buildOSRMSegment(snappedUser, lastPt);
+    const lastPt         = zonePoints[zonePoints.length - 1];
+    const finalRoute     = await buildOSRMSegment(snappedUser, lastPt);
     const allRouteCoords = finalRoute;
 
     fullRoute = allRouteCoords.map(c => ({ coord: [c[0], c[1]] }));
 
-    // 6. Рисуем слой аудиозон
     if (map.getSource("audio-circles")) {
         map.getSource("audio-circles").setData({
             type: "FeatureCollection",
@@ -977,7 +991,6 @@ async function spawnDynamicZones(userLat, userLng) {
         map.on("mouseleave", "audio-circles-layer", () => { map.getCanvas().style.cursor = ""; });
     }
 
-    // 7. Рисуем маршрут
     ["route-remaining", "route-passed"].forEach(id => {
         if (map.getLayer(id + "-line")) map.removeLayer(id + "-line");
         if (map.getSource(id))         map.removeSource(id);
@@ -1002,10 +1015,8 @@ async function spawnDynamicZones(userLat, userLng) {
         paint:  { "line-width": 4, "line-color": "#333333" }
     });
 
-    // 8. Медиазоны вдоль маршрута
     spawnMediaZones(allRouteCoords, userLat, userLng);
 
-    // 9. Камера и стрелка
     map.easeTo({ center: [userLng, userLat], zoom: 17, duration: 800 });
     map.once("moveend", () => updateNextZoneMarker());
 
@@ -1032,8 +1043,8 @@ async function initMap() {
     }
 
     map.on("load", async () => {
-        globalAudio         = document.getElementById("globalAudio");
-        globalAudio.muted   = false;
+        globalAudio          = document.getElementById("globalAudio");
+        globalAudio.muted    = false;
         globalAudio.autoplay = true;
         globalAudio.load();
 
