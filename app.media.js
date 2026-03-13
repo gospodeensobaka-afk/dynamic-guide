@@ -4,24 +4,14 @@
 
 /* === PHOTO & VIDEO TIMINGS === */
 const photoTimings = {
-    "audio/1.m4a": {
-        3: { open: "images/shalyapin3.jpeg" }
-    },
-
-    "audio/2.m4a": {
-        3: { open: "images/vodnih.jpeg" }
+    "audio/Demo2.m4a": {
+        8.14: { open: "images/arhivdemo.jpeg", duration: 2810 }
     }
-   
-  };
+};
 
 const videoTimings = {
-   
-  "audio/2.m4a": {
-        10: { open: "videos/3d modelki.mp4", duration: 26000 }
-    },
-
-    "audio/3.m4a": {
-        5: { open: "videos/petrpanorama.mp4", duration: 7000 }
+    "audio/Demo4.m4a": {
+        16.48: { open: "videos/rickroll.mp4", duration: 12000 }
     }
 };
 
@@ -375,3 +365,4 @@ lastThree.forEach(zoneId => {
     galleryOverlay.classList.remove("hidden");
 };
 });
+
