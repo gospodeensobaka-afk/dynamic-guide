@@ -10,6 +10,10 @@ const photoTimings = {
 };
 
 const videoTimings = {
+    "audio/Demo3.m4a": {
+        1.88: { open: "videos/ikonki.mp4", duration: 7270 }
+    },
+{
     "audio/Demo4.m4a": {
         16.48: { open: "videos/rickroll.mp4", duration: 12000 }
     }
