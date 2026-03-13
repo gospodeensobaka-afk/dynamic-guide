@@ -4,14 +4,24 @@
 
 /* === PHOTO & VIDEO TIMINGS === */
 const photoTimings = {
-    "audio/Demo2.m4a": {
-        8.14: { open: "images/arhivdemo.jpeg", duration: 2810 }
+    "audio/1.m4a": {
+        3: { open: "images/shalyapin3.jpeg" }
+    },
+
+    "audio/2.m4a": {
+        3: { open: "images/vodnih.jpeg" }
     }
-};
+   
+  };
 
 const videoTimings = {
-    "audio/Demo4.m4a": {
-        16.48: { open: "videos/rickroll.mp4", duration: 12000 }
+   
+  "audio/2.m4a": {
+        10: { open: "videos/3d modelki.mp4", duration: 26000 }
+    },
+
+    "audio/3.m4a": {
+        5: { open: "videos/petrpanorama.mp4", duration: 7000 }
     }
 };
 
@@ -220,7 +230,7 @@ if (type === "photo") {
 if (dx < -50 && window.__fsIndex < window.__fsGallery.length - 1) {
     media.style.transform = "translateX(-100%)";
     setTimeout(() => {
-        window.__openedFromGallery = true;
+        window.__openedFromGallery = true;   // ← ДОБАВИТЬ
         window.__fsIndex++;
         showFullscreenMedia(window.__fsGallery[window.__fsIndex], "photo");
     }, 200);
@@ -231,7 +241,7 @@ if (dx < -50 && window.__fsIndex < window.__fsGallery.length - 1) {
 if (dx > 50 && window.__fsIndex > 0) {
     media.style.transform = "translateX(100%)";
     setTimeout(() => {
-        window.__openedFromGallery = true;
+        window.__openedFromGallery = true;   // ← ДОБАВИТЬ
         window.__fsIndex--;
         showFullscreenMedia(window.__fsGallery[window.__fsIndex], "photo");
     }, 200);
@@ -314,6 +324,8 @@ lastThree.forEach(zoneId => {
 });
     lastThree.forEach(zoneId => {
         const items = missedMedia[zoneId];
+
+       
 
         items.forEach(item => {
             const thumb = document.createElement("div");
