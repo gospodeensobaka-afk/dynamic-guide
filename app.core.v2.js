@@ -4,7 +4,7 @@
 
 /* === SMART PRELOAD QUEUE === */
 let preloadDebugList = [];
-let preloadQueue = [];
+let preloadQueue     = [];
 let preloadInProgress = false;
 
 function queuePreload(files, zoneId = null) {
@@ -25,12 +25,29 @@ async function runPreloadQueue() {
 }
 
 async function hardPreloadVideo(src) {
+    window.__videoWarmup = window.__videoWarmup || {};
+    if (window.__videoWarmup[src]) return;
+
     try {
-        const blob = await fetch(src).then(r => r.blob());
-        const url = URL.createObjectURL(blob);
-        window.__videoCache = window.__videoCache || {};
-        window.__videoCache[src] = url;
-    } catch (e) { console.warn("Video preload failed:", src, e); }
+        const v = document.createElement("video");
+        v.src         = src;
+        v.preload     = "auto";
+        v.muted       = true;
+        v.playsInline = true;
+        v.setAttribute("playsinline",        "true");
+        v.setAttribute("webkit-playsinline", "true");
+        v.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;top:-9999px;";
+        document.body.appendChild(v);
+        v.load();
+        await new Promise(resolve => {
+            v.oncanplay = resolve;
+            v.onerror   = resolve;
+            setTimeout(resolve, 10000);
+        });
+        window.__videoWarmup[src] = v;
+    } catch (e) {
+        console.warn("Video warmup failed:", src, e);
+    }
 }
 
 function preloadSingle(src) {
@@ -40,7 +57,7 @@ function preloadSingle(src) {
             const a = new Audio(); a.src = src; a.preload = "auto";
             a.oncanplaythrough = resolve; a.onerror = resolve; return;
         }
-        if (src.match(/\.(jpg|jpeg|png)$/i)) {
+        if (src.match(/\.(jpg|jpeg|png|webp)$/i)) {
             const img = new Image(); img.src = src;
             img.onload = resolve; img.onerror = resolve; return;
         }
@@ -60,55 +77,55 @@ function hideMiniStatus() {
 /* === CORE STATE === */
 let tourStarted = false;
 let map;
-let arrowEl = null;
+let arrowEl    = null;
 let lastCoords = null;
-let zones = [];
+let zones      = [];
 
 let simulationActive = false;
 let simulationPoints = [];
-let simulationIndex = 0;
+let simulationIndex  = 0;
 
-let globalAudio = null;
-let gpsActive = false;
-let audioEnabled = false;
-let audioPlaying = false;
-let totalAudioZones = 0;
+let globalAudio      = null;
+let gpsActive        = false;
+let audioEnabled     = false;
+let audioPlaying     = false;
+let totalAudioZones  = 0;
 let visitedAudioZones = 0;
 
-let fullRoute = [];
+let fullRoute     = [];
 let compassActive = false;
-let userTouching = false;
-let smoothAngle = 0;
+let userTouching  = false;
+let smoothAngle   = 0;
 let compassUpdates = 0;
-let followMode = true;
+let followMode    = true;
 let followTimeout = null;
 
-let gpsAngleLast = null;
-let gpsUpdates = 0;
-let lastMapBearing = 0;
+let gpsAngleLast      = null;
+let gpsUpdates        = 0;
+let lastMapBearing    = 0;
 let lastCorrectedAngle = 0;
 
 /* === NEXT ZONE MARKER === */
 let nextZoneMarker = null;
 
 /* === WAKE LOCK === */
-let __wakeLock = null;
-let __audioUnlocked = false;
-let __videoUnlocked = false;
-let __audioContext = null;
+let __wakeLock       = null;
+let __audioUnlocked  = false;
+let __videoUnlocked  = false;
+let __audioContext   = null;
 
 /* ========================================================
    ===================== UTILITIES ========================
    ======================================================== */
 
 function distance(a, b) {
-    const R = 6371000;
+    const R    = 6371000;
     const dLat = (b[0] - a[0]) * Math.PI / 180;
     const dLon = (b[1] - a[1]) * Math.PI / 180;
     const lat1 = a[0] * Math.PI / 180;
     const lat2 = b[0] * Math.PI / 180;
-    const x = dLon * Math.cos((lat1 + lat2) / 2);
-    const y = dLat;
+    const x    = dLon * Math.cos((lat1 + lat2) / 2);
+    const y    = dLat;
     return Math.sqrt(x * x + y * y) * R;
 }
 
@@ -157,7 +174,6 @@ function updateProgress() {
    ======================================================== */
 
 function showOnboarding() {
-    // Инжектим стили
     const style = document.createElement("style");
     style.textContent = `
         #onboardingOverlay {
@@ -206,10 +222,7 @@ function showOnboarding() {
             background: rgba(255,255,255,0.25);
             transition: all 0.3s ease;
         }
-        .ob-dot.active {
-            width: 24px;
-            background: #fff;
-        }
+        .ob-dot.active { width: 24px; background: #fff; }
         #obNextBtn {
             position: absolute; bottom: 40px;
             width: calc(100% - 64px);
@@ -232,7 +245,6 @@ function showOnboarding() {
                 <circle cx="55" cy="55" r="24" fill="rgba(10,132,255,0.25)" stroke="#0a84ff" stroke-width="2"/>
                 <circle cx="55" cy="55" r="8" fill="#0a84ff"/>
                 <path d="M55 15 L55 95 M15 55 L95 55" stroke="rgba(10,132,255,0.2)" stroke-width="1" stroke-dasharray="4 4"/>
-                <!-- walking figure -->
                 <circle cx="55" cy="38" r="4" fill="#fff"/>
                 <path d="M55 42 L55 54 M55 54 L50 64 M55 54 L60 64 M50 46 L60 46" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
             </svg>`,
@@ -243,17 +255,13 @@ function showOnboarding() {
             color: "linear-gradient(135deg, #1a1a2e 0%, #0d1f1a 100%)",
             accent: "#30d158",
             svg: `<svg width="110" height="110" viewBox="0 0 110 110" fill="none">
-                <!-- phone mockup -->
                 <rect x="30" y="15" width="50" height="80" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
                 <rect x="35" y="25" width="40" height="50" rx="4" fill="rgba(48,209,88,0.1)" stroke="rgba(48,209,88,0.3)" stroke-width="1"/>
-                <!-- photo icon inside -->
                 <rect x="40" y="30" width="30" height="22" rx="3" fill="rgba(48,209,88,0.2)"/>
                 <circle cx="47" cy="37" r="3" fill="#30d158"/>
                 <path d="M40 48 L48 40 L55 46 L60 41 L70 52" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <!-- swipe arrow -->
                 <path d="M28 75 L82 75" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3 3"/>
                 <path d="M68 70 L82 75 L68 80" stroke="#30d158" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                <!-- dots -->
                 <circle cx="45" cy="87" r="3" fill="#30d158"/>
                 <circle cx="55" cy="87" r="3" fill="rgba(255,255,255,0.25)"/>
                 <circle cx="65" cy="87" r="3" fill="rgba(255,255,255,0.25)"/>
@@ -265,17 +273,12 @@ function showOnboarding() {
             color: "linear-gradient(135deg, #1a1a2e 0%, #1f1a0d 100%)",
             accent: "#ff9f0a",
             svg: `<svg width="110" height="110" viewBox="0 0 110 110" fill="none">
-                <!-- map with route -->
                 <rect x="20" y="20" width="70" height="70" rx="12" fill="rgba(255,159,10,0.08)" stroke="rgba(255,159,10,0.2)" stroke-width="1.5"/>
-                <!-- route line -->
-                <path d="M35 80 Q35 55 55 55 Q75 55 75 35" stroke="#ff9f0a" stroke-width="2.5" stroke-linecap="round" fill="none" stroke-dasharray="none"/>
-                <!-- zone circles -->
+                <path d="M35 80 Q35 55 55 55 Q75 55 75 35" stroke="#ff9f0a" stroke-width="2.5" stroke-linecap="round" fill="none"/>
                 <circle cx="35" cy="80" r="7" fill="rgba(48,209,88,0.3)" stroke="#30d158" stroke-width="1.5"/>
                 <circle cx="55" cy="55" r="7" fill="rgba(255,159,10,0.3)" stroke="#ff9f0a" stroke-width="1.5"/>
                 <circle cx="75" cy="35" r="7" fill="rgba(255,59,48,0.2)" stroke="rgba(255,59,48,0.5)" stroke-width="1.5"/>
-                <!-- checkmark in first circle -->
                 <path d="M32 80 L35 83 L39 77" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <!-- missed badge -->
                 <rect x="60" y="18" width="36" height="20" rx="10" fill="#ff9f0a"/>
                 <text x="78" y="32" font-size="11" fill="#000" font-weight="700" text-anchor="middle">Пропуск</text>
             </svg>`,
@@ -285,28 +288,28 @@ function showOnboarding() {
     ];
 
     const overlay = document.createElement("div");
-    overlay.id = "onboardingOverlay";
+    overlay.id    = "onboardingOverlay";
 
-    const slider = document.createElement("div");
-    slider.id = "onboardingSlider";
+    const slider  = document.createElement("div");
+    slider.id     = "onboardingSlider";
 
-    slides.forEach((s, i) => {
+    slides.forEach((s) => {
         const slide = document.createElement("div");
-        slide.className = "ob-slide";
+        slide.className    = "ob-slide";
         slide.style.background = s.color;
 
         const illus = document.createElement("div");
-        illus.className = "ob-illustration";
+        illus.className    = "ob-illustration";
         illus.style.background = `radial-gradient(circle at 50% 50%, ${s.accent}22 0%, transparent 70%)`;
-        illus.innerHTML = s.svg;
+        illus.innerHTML    = s.svg;
 
         const title = document.createElement("div");
-        title.className = "ob-title";
-        title.textContent = s.title;
+        title.className    = "ob-title";
+        title.textContent  = s.title;
 
         const desc = document.createElement("div");
-        desc.className = "ob-desc";
-        desc.textContent = s.desc;
+        desc.className     = "ob-desc";
+        desc.textContent   = s.desc;
 
         slide.appendChild(illus);
         slide.appendChild(title);
@@ -314,7 +317,6 @@ function showOnboarding() {
         slider.appendChild(slide);
     });
 
-    // Dots
     const dots = document.createElement("div");
     dots.id = "obDots";
     slides.forEach((_, i) => {
@@ -323,9 +325,8 @@ function showOnboarding() {
         dots.appendChild(dot);
     });
 
-    // Button
-    const btn = document.createElement("button");
-    btn.id = "obNextBtn";
+    const btn       = document.createElement("button");
+    btn.id          = "obNextBtn";
     btn.textContent = "Далее";
 
     overlay.appendChild(slider);
@@ -333,9 +334,8 @@ function showOnboarding() {
     overlay.appendChild(btn);
     document.body.appendChild(overlay);
 
-    let current = 0;
+    let current   = 0;
     const allDots = dots.querySelectorAll(".ob-dot");
-    const allSlides = slider.querySelectorAll(".ob-slide");
 
     function goTo(idx) {
         current = idx;
@@ -346,26 +346,24 @@ function showOnboarding() {
             : slides[idx].accent === "#30d158"
             ? "linear-gradient(180deg,#30d158 0%,#1fa347 100%)"
             : "linear-gradient(180deg,#ff9f0a 0%,#e08800 100%)";
-        btn.style.color = slides[idx].accent === "#ff9f0a" ? "#000" : "#fff";
-        btn.textContent = idx === slides.length - 1 ? "Начать тур 🎧" : "Далее";
+        btn.style.color     = slides[idx].accent === "#ff9f0a" ? "#000" : "#fff";
+        btn.textContent     = idx === slides.length - 1 ? "Начать тур 🎧" : "Далее";
     }
-
     goTo(0);
 
-    // Swipe support
     let touchStartX = 0;
     slider.addEventListener("touchstart", e => { touchStartX = e.touches[0].clientX; }, { passive: true });
-    slider.addEventListener("touchend", e => {
+    slider.addEventListener("touchend",   e => {
         const dx = e.changedTouches[0].clientX - touchStartX;
         if (dx < -50 && current < slides.length - 1) goTo(current + 1);
-        if (dx > 50 && current > 0) goTo(current - 1);
+        if (dx >  50 && current > 0)                 goTo(current - 1);
     }, { passive: true });
 
     btn.onclick = () => {
         if (current < slides.length - 1) {
             goTo(current + 1);
         } else {
-            overlay.style.opacity = "0";
+            overlay.style.opacity    = "0";
             overlay.style.transition = "opacity 0.3s ease";
             setTimeout(() => overlay.remove(), 300);
         }
@@ -396,8 +394,8 @@ function showOnboarding() {
 })();
 
 function createNextZoneArrowEl() {
-    const el = document.createElement("div");
-    el.style.width = "50px";
+    const el       = document.createElement("div");
+    el.style.width  = "50px";
     el.style.height = "60px";
     el.style.pointerEvents = "none";
 
@@ -421,16 +419,14 @@ function createNextZoneArrowEl() {
 
 function updateNextZoneMarker() {
     const audioZones = zones.filter(z => z.type === "audio");
-    const next = audioZones.find(z => !z.visited);
+    const next       = audioZones.find(z => !z.visited);
 
     if (nextZoneMarker) { nextZoneMarker.remove(); nextZoneMarker = null; }
     if (!next || !map) return;
 
-    const lngLat = [next.lng, next.lat];
     const el = createNextZoneArrowEl();
-
     nextZoneMarker = new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -20] })
-        .setLngLat(lngLat)
+        .setLngLat([next.lng, next.lat])
         .addTo(map);
 }
 
@@ -441,7 +437,7 @@ function updateNextZoneMarker() {
 function playZoneAudio(src, id) {
     window.__currentZoneId = id;
     if (!audioEnabled) audioEnabled = true;
-    globalAudio.src = src;
+    globalAudio.src         = src;
     globalAudio.currentTime = 0;
     globalAudio.play().catch(() => {});
     audioPlaying = true;
@@ -493,7 +489,7 @@ function updateArrowPositionFromCoords(coords) {
 function applyArrowTransform(angle) {
     if (!arrowEl) return;
     const a = isNaN(angle) ? 0 : angle;
-    arrowEl.style.transform = `translate(-50%, -50%) rotate(${a}deg)`;
+    arrowEl.style.transform  = `translate(-50%, -50%) rotate(${a}deg)`;
     arrowEl.style.visibility = "visible";
 }
 
@@ -518,11 +514,11 @@ function simulateAudioZone(id) {
         globalAudio.pause();
         globalAudio.removeAttribute("src");
         globalAudio.load();
-        globalAudio.src = z.audio;
+        globalAudio.src         = z.audio;
         globalAudio.currentTime = 0;
         globalAudio.play().catch(() => {});
         audioPlaying = true;
-       setupPhotoTimingsForAudio(globalAudio, id);
+        setupPhotoTimingsForAudio(globalAudio, id);
         globalAudio.onended = () => { audioPlaying = false; };
     }
 }
@@ -567,10 +563,12 @@ function moveMarker(coords) {
 
     let nearestIndex = null, nearestDist = Infinity, nearestProj = null;
     for (let i = 0; i < fullRoute.length - 1; i++) {
-        const a = fullRoute[i].coord, b = fullRoute[i + 1].coord;
+        const a    = fullRoute[i].coord, b = fullRoute[i + 1].coord;
         const info = pointToSegmentInfo([coords[0], coords[1]], a, b);
         if (info.dist < nearestDist) {
-            nearestDist = info.dist; nearestIndex = i; nearestProj = info.projLngLat;
+            nearestDist  = info.dist;
+            nearestIndex = i;
+            nearestProj  = info.projLngLat;
         }
     }
     if (nearestDist > 12) { checkZones(coords); return; }
@@ -601,7 +599,7 @@ function handleIOSCompass(e) {
     const raw = normalizeAngle(e.webkitCompassHeading);
     smoothAngle = normalizeAngle(0.8 * smoothAngle + 0.2 * raw);
     compassUpdates++;
-    lastMapBearing = map.getBearing ? map.getBearing() : 0;
+    lastMapBearing     = map.getBearing ? map.getBearing() : 0;
     lastCorrectedAngle = normalizeAngle(smoothAngle - lastMapBearing);
     applyArrowTransform(lastCorrectedAngle);
     if (followMode && lastCoords) {
@@ -616,7 +614,6 @@ function handleIOSCompass(e) {
 async function snapToOSRM(lngLat) {
     const [lng, lat] = lngLat;
     try {
-        // foot профиль на routing.openstreetmap.de — честный пешеходный маршрут
         const res  = await fetch(`https://routing.openstreetmap.de/routed-foot/nearest/v1/foot/${lng},${lat}?number=1`);
         const json = await res.json();
         if (json.waypoints?.[0]) return json.waypoints[0].location;
@@ -624,31 +621,58 @@ async function snapToOSRM(lngLat) {
     return lngLat;
 }
 
-// Строим маршрут между двумя точками и возвращаем массив координат
 async function buildOSRMSegment(from, to) {
     const coordStr = `${from[0]},${from[1]};${to[0]},${to[1]}`;
     try {
-        // foot профиль — только тротуары, пешеходные зоны, дворы
         const res  = await fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coordStr}?overview=full&geometries=geojson`);
         const json = await res.json();
         if (json.routes?.[0]) return json.routes[0].geometry.coordinates;
     } catch (e) { console.warn("OSRM segment error:", e); }
-    // fallback — прямая линия
     return [from, to];
 }
 
-// Генерируем 4 аудиозоны линейно — строго на север от пользователя,
-// каждая следующая на ~50м дальше предыдущей
-function generateLinearAudioPoints(userLat, userLng, count = 4, spacingMeters = 50) {
-    const R = 111320;
-    const points = [];
+/* ========================================================
+   === ЛИНЕЙНАЯ ГЕНЕРАЦИЯ ЗОН ВДОЛЬ ПЕШЕХОДНОГО МАРШРУТА ==
+   ======================================================== */
+
+/**
+ * Берём count точек равномерно вдоль уже построенного OSRM-маршрута
+ * с шагом spacingMeters. Точки гарантированно на пешеходных дорожках —
+ * никаких проезжих частей и разброса в стороны.
+ */
+function samplePointsAlongRoute(routeCoords, count, spacingMeters) {
+    const result     = [];
+    let accumulated  = 0;
+    let coordIdx     = 0;
+
     for (let i = 0; i < count; i++) {
-        // Немного отклоняем по долготе чтобы не было идеальной прямой — выглядит естественнее
-        const latOffset = ((i + 1) * spacingMeters) / R;
-        const lngOffset = ((i % 2 === 0 ? 1 : -1) * 15) / (R * Math.cos(userLat * Math.PI / 180));
-        points.push([userLng + lngOffset, userLat + latOffset]);
+        const targetDist = (i + 1) * spacingMeters;
+
+        while (coordIdx < routeCoords.length - 1) {
+            const a      = routeCoords[coordIdx];
+            const b      = routeCoords[coordIdx + 1];
+            const segLen = distance([a[1], a[0]], [b[1], b[0]]);
+
+            if (accumulated + segLen >= targetDist) {
+                const t   = (targetDist - accumulated) / segLen;
+                const lng = a[0] + (b[0] - a[0]) * t;
+                const lat = a[1] + (b[1] - a[1]) * t;
+                result.push([lng, lat]);
+                break;
+            }
+
+            accumulated += segLen;
+            coordIdx++;
+        }
+
+        // Если маршрут короче чем нужно — ставим точку в конец
+        if (result.length < i + 1 && routeCoords.length > 0) {
+            const last = routeCoords[routeCoords.length - 1];
+            result.push([last[0], last[1]]);
+        }
     }
-    return points;
+
+    return result;
 }
 
 /* ========================================================
@@ -681,27 +705,19 @@ const MEDIA_ZONE_TYPES = [
     }
 ];
 
-function spawnMediaZones(userLat, userLng) {
-    // Медиазоны спавним просто рядом с местом проведения —
-    // не на маршруте, случайно разбросаны в радиусе 80–180м
-    const R = 111320;
+function spawnMediaZones(routeCoords, userLat, userLng) {
+    // Медиазоны ставим прямо на маршрут — между аудиозонами
+    // Берём точки примерно на 25м, 75м, 125м от старта (между зонами)
+    const mediaSamplePoints = samplePointsAlongRoute(routeCoords, 3, 25);
 
-    const offsets = [
-        { dlat:  120, dlng:  80 },
-        { dlat: -60,  dlng: 150 },
-        { dlat:  80,  dlng: -120 },
-    ];
-
-    offsets.forEach((off, i) => {
-        const lat = userLat + off.dlat / R;
-        const lng = userLng + off.dlng / (R * Math.cos(userLat * Math.PI / 180));
-
+    mediaSamplePoints.forEach((pt, i) => {
         const typeDef = MEDIA_ZONE_TYPES[i % MEDIA_ZONE_TYPES.length];
 
         const mz = {
             id: `media_${i}`,
             type: "mediaMenu",
-            lat, lng,
+            lat: pt[1],
+            lng: pt[0],
             icon: typeDef.icon,
             title: typeDef.title,
             description: typeDef.description,
@@ -713,9 +729,9 @@ function spawnMediaZones(userLat, userLng) {
 
         zones.push(mz);
 
-        const el = document.createElement("img");
-        el.src = mz.icon;
-        el.style.width = "36px";
+        const el       = document.createElement("img");
+        el.src         = mz.icon;
+        el.style.width  = "36px";
         el.style.height = "36px";
         el.style.cursor = "pointer";
         el.style.filter = "drop-shadow(0 2px 6px rgba(0,0,0,0.5))";
@@ -726,7 +742,7 @@ function spawnMediaZones(userLat, userLng) {
             .addTo(map);
     });
 
-    console.log("✅ Медиазоны расставлены");
+    console.log("✅ Медиазоны расставлены вдоль маршрута");
 }
 
 /* ========================================================
@@ -737,8 +753,8 @@ function openMediaMenu(p) {
     window.__mediaMenuMode = true;
     let overlay = document.getElementById("mediaMenuUniversal");
     if (!overlay) createMediaMenuUniversal();
-    overlay = document.getElementById("mediaMenuUniversal");
-    const sheet = document.getElementById("mediaMenuUniversalSheet");
+    overlay       = document.getElementById("mediaMenuUniversal");
+    const sheet   = document.getElementById("mediaMenuUniversalSheet");
 
     const titleEl = document.getElementById("mmTitle");
     titleEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;">
@@ -746,18 +762,17 @@ function openMediaMenu(p) {
         <span>${p.title || ""}</span></div>`;
     titleEl.style.cssText = "font-size:18px;margin-bottom:8px;color:#ffffff;text-shadow:0 0 26px rgba(255,255,255,1)";
 
-    const descEl = document.getElementById("mmDesc");
+    const descEl  = document.getElementById("mmDesc");
     descEl.textContent = p.description || "";
     descEl.style.cssText = "font-size:14px;margin-bottom:16px;color:#ffffff;text-shadow:0 0 4px rgba(255,255,255,0.35)";
 
-    // Цена если есть
     const priceEl = document.getElementById("mmPrice");
     if (priceEl) {
         if (p.priceMin && p.priceMax) {
-            priceEl.textContent = `🍴 ${p.priceMin} – ${p.priceMax} ₽`;
-            priceEl.style.display = "block";
+            priceEl.textContent    = `🍴 ${p.priceMin} – ${p.priceMax} ₽`;
+            priceEl.style.display  = "block";
         } else {
-            priceEl.style.display = "none";
+            priceEl.style.display  = "none";
         }
     }
 
@@ -782,7 +797,7 @@ function openMediaMenu(p) {
                 box.appendChild(img);
                 box.onclick = () => {
                     window.__fsGallery = p.photos.slice();
-                    window.__fsIndex = p.photos.indexOf(src);
+                    window.__fsIndex   = p.photos.indexOf(src);
                     showFullscreenMedia(src, "photo");
                 };
                 preview.appendChild(box);
@@ -800,13 +815,13 @@ function openMediaMenu(p) {
 
     [photoBtn, videoBtn].forEach(btn => {
         if (!btn) return;
-        btn.style.transition = "transform 0.12s ease";
-        btn.onmousedown  = () => btn.style.transform = "scale(0.96)";
-        btn.onmouseup    = () => btn.style.transform = "scale(1)";
-        btn.onmouseleave = () => btn.style.transform = "scale(1)";
-        btn.ontouchstart = () => btn.style.transform = "scale(0.96)";
-        btn.ontouchend   = () => btn.style.transform = "scale(1)";
-        btn.ontouchcancel= () => btn.style.transform = "scale(1)";
+        btn.style.transition  = "transform 0.12s ease";
+        btn.onmousedown       = () => btn.style.transform = "scale(0.96)";
+        btn.onmouseup         = () => btn.style.transform = "scale(1)";
+        btn.onmouseleave      = () => btn.style.transform = "scale(1)";
+        btn.ontouchstart      = () => btn.style.transform = "scale(0.96)";
+        btn.ontouchend        = () => btn.style.transform = "scale(1)";
+        btn.ontouchcancel     = () => btn.style.transform = "scale(1)";
     });
 }
 
@@ -821,14 +836,14 @@ function closeMediaMenuUniversal() {
 
 function createMediaMenuUniversal() {
     const overlay = document.createElement("div");
-    overlay.id = "mediaMenuUniversal";
+    overlay.id    = "mediaMenuUniversal";
     Object.assign(overlay.style, {
         position:"fixed", left:"0", top:"0", width:"100%", height:"100%",
         background:"rgba(0,0,0,0.4)", display:"none", zIndex:"200000",
         alignItems:"flex-end", justifyContent:"center"
     });
     const sheet = document.createElement("div");
-    sheet.id = "mediaMenuUniversalSheet";
+    sheet.id    = "mediaMenuUniversalSheet";
     Object.assign(sheet.style, {
         width:"100%", background:"#1c1c1e", boxShadow:"0 -4px 20px rgba(0,0,0,0.4)",
         borderTopLeftRadius:"16px", borderTopRightRadius:"16px", padding:"20px",
@@ -869,50 +884,50 @@ function hideLoadingZones() {
 async function spawnDynamicZones(userLat, userLng) {
     showLoadingZones();
 
-    // 1. Генерируем 4 точки аудиозон линейно от пользователя
-    const rawPoints = generateLinearAudioPoints(userLat, userLng, 4, 50);
+    // 1. Снапаем пользователя к пешеходной дороге
+    const snappedUser = await snapToOSRM([userLng, userLat]);
 
-    // 2. Снапаем пользователя и все зоны к ближайшей дороге
-    const [snappedUser, ...snappedZones] = await Promise.all([
-        snapToOSRM([userLng, userLat]),
-        ...rawPoints.map(p => snapToOSRM(p))
-    ]);
+    // 2. Строим «разведочный» маршрут вперёд:
+    //    берём точку ~300м на север как цель, OSRM прокладывает по тротуарам
+    const R           = 111320;
+    const probeTarget = [snappedUser[0], snappedUser[1] + 300 / R];
+    const snappedTarget = await snapToOSRM(probeTarget);
+    const probeRoute    = await buildOSRMSegment(snappedUser, snappedTarget);
 
-    // 3. Аудиозоны
-    const audioZones = snappedZones.map((pt, i) => ({
-        id: i + 1,
-        type: "audio",
-        lat: pt[1],
-        lng: pt[0],
-        radius: 15,
+    // 3. Берём 4 точки равномерно вдоль маршрута с шагом 50м
+    //    Все точки строго на пешеходном пути — никакой проезжей части
+    const zonePoints = samplePointsAlongRoute(probeRoute, 4, 50);
+
+    // Дополняем до 4 если маршрут оказался коротким
+    while (zonePoints.length < 4) {
+        zonePoints.push(snappedTarget);
+    }
+
+    // 4. Аудиозоны — точки уже на пешеходном маршруте
+    const audioZones = zonePoints.map((pt, i) => ({
+        id:      i + 1,
+        type:    "audio",
+        lat:     pt[1],
+        lng:     pt[0],
+        radius:  15,
         visited: false,
-        audio: `audio/Demo${i + 1}.m4a`
+        audio:   `audio/Demo${i + 1}.m4a`
     }));
 
-    zones = [...audioZones];
+    zones           = [...audioZones];
     totalAudioZones = audioZones.length;
     updateProgress();
 
-    // 4. Строим маршрут СЕГМЕНТАМИ: я→1, 1→2, 2→3, 3→4
-    // Каждый сегмент — отдельный OSRM запрос, без кольца
-    const waypoints = [snappedUser, ...snappedZones];
-    const segmentCoords = await Promise.all(
-        waypoints.slice(0, -1).map((from, i) => buildOSRMSegment(from, waypoints[i + 1]))
-    );
-
-    // Склеиваем все сегменты в один fullRoute, без дублей стыков
-    const allRouteCoords = [];
-    segmentCoords.forEach((seg, i) => {
-        if (i === 0) {
-            allRouteCoords.push(...seg);
-        } else {
-            allRouteCoords.push(...seg.slice(1)); // первая точка = последняя предыдущего
-        }
-    });
+    // 5. Финальный маршрут от пользователя до последней зоны
+    //    Если probeRoute достаточно длинный — используем его напрямую,
+    //    иначе достраиваем до последней зоны
+    const lastPt       = zonePoints[zonePoints.length - 1];
+    const finalRoute   = await buildOSRMSegment(snappedUser, lastPt);
+    const allRouteCoords = finalRoute;
 
     fullRoute = allRouteCoords.map(c => ({ coord: [c[0], c[1]] }));
 
-    // 5. Рисуем слой аудиозон
+    // 6. Рисуем слой аудиозон
     if (map.getSource("audio-circles")) {
         map.getSource("audio-circles").setData({
             type: "FeatureCollection",
@@ -962,10 +977,10 @@ async function spawnDynamicZones(userLat, userLng) {
         map.on("mouseleave", "audio-circles-layer", () => { map.getCanvas().style.cursor = ""; });
     }
 
-    // 6. Рисуем маршрут
+    // 7. Рисуем маршрут
     ["route-remaining", "route-passed"].forEach(id => {
         if (map.getLayer(id + "-line")) map.removeLayer(id + "-line");
-        if (map.getSource(id)) map.removeSource(id);
+        if (map.getSource(id))         map.removeSource(id);
     });
 
     map.addSource("route-remaining", {
@@ -979,23 +994,23 @@ async function spawnDynamicZones(userLat, userLng) {
     map.addLayer({
         id: "route-remaining-line", type: "line", source: "route-remaining",
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-width": 4, "line-color": "#007aff" }
+        paint:  { "line-width": 4, "line-color": "#007aff" }
     });
     map.addLayer({
         id: "route-passed-line", type: "line", source: "route-passed",
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-width": 4, "line-color": "#333333" }
+        paint:  { "line-width": 4, "line-color": "#333333" }
     });
 
-    // 7. Медиазоны — рядом с местом, не на маршруте
-    spawnMediaZones(userLat, userLng);
+    // 8. Медиазоны вдоль маршрута
+    spawnMediaZones(allRouteCoords, userLat, userLng);
 
-    // 8. Камера и стрелка
+    // 9. Камера и стрелка
     map.easeTo({ center: [userLng, userLat], zoom: 17, duration: 800 });
     map.once("moveend", () => updateNextZoneMarker());
 
     hideLoadingZones();
-    console.log("✅ Линейный маршрут готов:", audioZones.length, "аудиозоны,", segmentCoords.length, "сегментов");
+    console.log("✅ Линейный маршрут по тротуарам готов:", audioZones.length, "аудиозоны");
 }
 
 /* ========================================================
@@ -1005,10 +1020,10 @@ async function spawnDynamicZones(userLat, userLng) {
 async function initMap() {
     map = new maplibregl.Map({
         container: "map",
-        style: "style.json?v=2",
-        center: [49.12169747999815, 55.7872919881855],
-        zoom: 12,
-        bearing: -141.20322070183164
+        style:     "style.json?v=2",
+        center:    [49.12169747999815, 55.7872919881855],
+        zoom:      12,
+        bearing:   -141.20322070183164
     });
 
     const mapContainer = document.getElementById("map");
@@ -1017,8 +1032,8 @@ async function initMap() {
     }
 
     map.on("load", async () => {
-        globalAudio = document.getElementById("globalAudio");
-        globalAudio.muted = false;
+        globalAudio         = document.getElementById("globalAudio");
+        globalAudio.muted   = false;
         globalAudio.autoplay = true;
         globalAudio.load();
 
@@ -1036,8 +1051,6 @@ async function initMap() {
             if (followTimeout) clearTimeout(followTimeout);
             followTimeout = setTimeout(() => followMode = true, 3000);
         });
-        map.on("movestart", () => {});
-        map.on("moveend",   () => {});
 
         updateProgress();
 
@@ -1102,7 +1115,7 @@ async function unlockVideoIOS() {
     try {
         const v = document.createElement("video");
         v.muted = true; v.playsInline = true;
-        v.setAttribute("playsinline", "true");
+        v.setAttribute("playsinline",        "true");
         v.setAttribute("webkit-playsinline", "true");
         v.src = "data:video/mp4;base64,";
         await v.play().catch(() => {});
@@ -1135,23 +1148,16 @@ if (startBtn) {
             } else if (isAndroid) {
                 window.addEventListener("deviceorientation", e => {
                     if (!compassActive || e.alpha == null || e.beta == null || e.gamma == null) return;
-
                     const toRad = Math.PI / 180;
-                    const alpha = e.alpha * toRad;
-                    const beta  = e.beta  * toRad;
-                    const gamma = e.gamma * toRad;
-
+                    const alpha = e.alpha * toRad, beta  = e.beta  * toRad, gamma = e.gamma * toRad;
                     const sa = Math.sin(alpha), ca = Math.cos(alpha);
-                    const sb = Math.sin(beta),  cb = Math.cos(beta);
-                    const sg = Math.sin(gamma), cg = Math.cos(gamma);
-
-                    const Vx = sa * sg - ca * sb * cg;
-                    const Vy = ca * sg + sa * sb * cg;
-
+                    const sb = Math.sin(beta),  cg = Math.cos(gamma), sg = Math.sin(gamma);
+                    const Vx  = sa * sg - ca * sb * cg;
+                    const Vy  = ca * sg + sa * sb * cg;
                     const raw = normalizeAngle(Math.atan2(Vx, Vy) * (180 / Math.PI));
-                    smoothAngle = normalizeAngle(0.85 * smoothAngle + 0.15 * raw);
+                    smoothAngle        = normalizeAngle(0.85 * smoothAngle + 0.15 * raw);
                     compassUpdates++;
-                    lastMapBearing = map.getBearing ? map.getBearing() : 0;
+                    lastMapBearing     = map.getBearing ? map.getBearing() : 0;
                     lastCorrectedAngle = normalizeAngle(smoothAngle - lastMapBearing);
                     applyArrowTransform(lastCorrectedAngle);
                     if (followMode && lastCoords)
@@ -1205,11 +1211,8 @@ if (startBtn) {
    ======================================================== */
 
 document.addEventListener("DOMContentLoaded", () => {
-    showOnboarding(); // показываем онбординг при загрузке
+    showOnboarding();
     initMap();
 });
 
 /* ==================== END OF APP.JS ====================== */
-
-
-
