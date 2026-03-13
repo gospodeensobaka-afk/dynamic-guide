@@ -157,6 +157,7 @@ function updateProgress() {
    ======================================================== */
 
 function showOnboarding() {
+    // Инжектим стили
     const style = document.createElement("style");
     style.textContent = `
         #onboardingOverlay {
@@ -231,6 +232,7 @@ function showOnboarding() {
                 <circle cx="55" cy="55" r="24" fill="rgba(10,132,255,0.25)" stroke="#0a84ff" stroke-width="2"/>
                 <circle cx="55" cy="55" r="8" fill="#0a84ff"/>
                 <path d="M55 15 L55 95 M15 55 L95 55" stroke="rgba(10,132,255,0.2)" stroke-width="1" stroke-dasharray="4 4"/>
+                <!-- walking figure -->
                 <circle cx="55" cy="38" r="4" fill="#fff"/>
                 <path d="M55 42 L55 54 M55 54 L50 64 M55 54 L60 64 M50 46 L60 46" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
             </svg>`,
@@ -241,13 +243,17 @@ function showOnboarding() {
             color: "linear-gradient(135deg, #1a1a2e 0%, #0d1f1a 100%)",
             accent: "#30d158",
             svg: `<svg width="110" height="110" viewBox="0 0 110 110" fill="none">
+                <!-- phone mockup -->
                 <rect x="30" y="15" width="50" height="80" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
                 <rect x="35" y="25" width="40" height="50" rx="4" fill="rgba(48,209,88,0.1)" stroke="rgba(48,209,88,0.3)" stroke-width="1"/>
+                <!-- photo icon inside -->
                 <rect x="40" y="30" width="30" height="22" rx="3" fill="rgba(48,209,88,0.2)"/>
                 <circle cx="47" cy="37" r="3" fill="#30d158"/>
                 <path d="M40 48 L48 40 L55 46 L60 41 L70 52" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- swipe arrow -->
                 <path d="M28 75 L82 75" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3 3"/>
                 <path d="M68 70 L82 75 L68 80" stroke="#30d158" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <!-- dots -->
                 <circle cx="45" cy="87" r="3" fill="#30d158"/>
                 <circle cx="55" cy="87" r="3" fill="rgba(255,255,255,0.25)"/>
                 <circle cx="65" cy="87" r="3" fill="rgba(255,255,255,0.25)"/>
@@ -259,12 +265,17 @@ function showOnboarding() {
             color: "linear-gradient(135deg, #1a1a2e 0%, #1f1a0d 100%)",
             accent: "#ff9f0a",
             svg: `<svg width="110" height="110" viewBox="0 0 110 110" fill="none">
+                <!-- map with route -->
                 <rect x="20" y="20" width="70" height="70" rx="12" fill="rgba(255,159,10,0.08)" stroke="rgba(255,159,10,0.2)" stroke-width="1.5"/>
+                <!-- route line -->
                 <path d="M35 80 Q35 55 55 55 Q75 55 75 35" stroke="#ff9f0a" stroke-width="2.5" stroke-linecap="round" fill="none" stroke-dasharray="none"/>
+                <!-- zone circles -->
                 <circle cx="35" cy="80" r="7" fill="rgba(48,209,88,0.3)" stroke="#30d158" stroke-width="1.5"/>
                 <circle cx="55" cy="55" r="7" fill="rgba(255,159,10,0.3)" stroke="#ff9f0a" stroke-width="1.5"/>
                 <circle cx="75" cy="35" r="7" fill="rgba(255,59,48,0.2)" stroke="rgba(255,59,48,0.5)" stroke-width="1.5"/>
+                <!-- checkmark in first circle -->
                 <path d="M32 80 L35 83 L39 77" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- missed badge -->
                 <rect x="60" y="18" width="36" height="20" rx="10" fill="#ff9f0a"/>
                 <text x="78" y="32" font-size="11" fill="#000" font-weight="700" text-anchor="middle">Пропуск</text>
             </svg>`,
@@ -303,6 +314,7 @@ function showOnboarding() {
         slider.appendChild(slide);
     });
 
+    // Dots
     const dots = document.createElement("div");
     dots.id = "obDots";
     slides.forEach((_, i) => {
@@ -311,6 +323,7 @@ function showOnboarding() {
         dots.appendChild(dot);
     });
 
+    // Button
     const btn = document.createElement("button");
     btn.id = "obNextBtn";
     btn.textContent = "Далее";
@@ -322,6 +335,7 @@ function showOnboarding() {
 
     let current = 0;
     const allDots = dots.querySelectorAll(".ob-dot");
+    const allSlides = slider.querySelectorAll(".ob-slide");
 
     function goTo(idx) {
         current = idx;
@@ -338,6 +352,7 @@ function showOnboarding() {
 
     goTo(0);
 
+    // Swipe support
     let touchStartX = 0;
     slider.addEventListener("touchstart", e => { touchStartX = e.touches[0].clientX; }, { passive: true });
     slider.addEventListener("touchend", e => {
@@ -431,9 +446,6 @@ function playZoneAudio(src, id) {
     globalAudio.play().catch(() => {});
     audioPlaying = true;
     globalAudio.onended = () => { audioPlaying = false; };
-    if (typeof setupPhotoTimingsForAudio === "function") {
-        setupPhotoTimingsForAudio(globalAudio, id);
-    }
 }
 
 function updateCircleColors() {
@@ -510,9 +522,7 @@ function simulateAudioZone(id) {
         globalAudio.play().catch(() => {});
         audioPlaying = true;
         globalAudio.onended = () => { audioPlaying = false; };
-        if (typeof setupPhotoTimingsForAudio === "function") {
-            setupPhotoTimingsForAudio(globalAudio, id);
-        }
+    }
 }
 
 /* ========================================================
@@ -604,6 +614,7 @@ function handleIOSCompass(e) {
 async function snapToOSRM(lngLat) {
     const [lng, lat] = lngLat;
     try {
+        // foot профиль на routing.openstreetmap.de — честный пешеходный маршрут
         const res  = await fetch(`https://routing.openstreetmap.de/routed-foot/nearest/v1/foot/${lng},${lat}?number=1`);
         const json = await res.json();
         if (json.waypoints?.[0]) return json.waypoints[0].location;
@@ -611,20 +622,26 @@ async function snapToOSRM(lngLat) {
     return lngLat;
 }
 
+// Строим маршрут между двумя точками и возвращаем массив координат
 async function buildOSRMSegment(from, to) {
     const coordStr = `${from[0]},${from[1]};${to[0]},${to[1]}`;
     try {
+        // foot профиль — только тротуары, пешеходные зоны, дворы
         const res  = await fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coordStr}?overview=full&geometries=geojson`);
         const json = await res.json();
         if (json.routes?.[0]) return json.routes[0].geometry.coordinates;
     } catch (e) { console.warn("OSRM segment error:", e); }
+    // fallback — прямая линия
     return [from, to];
 }
 
+// Генерируем 4 аудиозоны линейно — строго на север от пользователя,
+// каждая следующая на ~50м дальше предыдущей
 function generateLinearAudioPoints(userLat, userLng, count = 4, spacingMeters = 50) {
     const R = 111320;
     const points = [];
     for (let i = 0; i < count; i++) {
+        // Немного отклоняем по долготе чтобы не было идеальной прямой — выглядит естественнее
         const latOffset = ((i + 1) * spacingMeters) / R;
         const lngOffset = ((i % 2 === 0 ? 1 : -1) * 15) / (R * Math.cos(userLat * Math.PI / 180));
         points.push([userLng + lngOffset, userLat + latOffset]);
@@ -633,13 +650,13 @@ function generateLinearAudioPoints(userLat, userLng, count = 4, spacingMeters = 
 }
 
 /* ========================================================
-   ====== DYNAMIC MEDIA ZONES ==============================
+   ====== DYNAMIC MEDIA ZONES — спавн рядом с маршрутом ===
    ======================================================== */
 
 const MEDIA_ZONE_TYPES = [
     {
         key: "souvenir",
-        icon: "icons/chakchak.webp",
+        icon: "icons/chakchak.png",
         title: "Сувенирный с дегустацией",
         description: "Традиционные татарские сувениры и угощения",
         priceMin: 200,
@@ -648,14 +665,14 @@ const MEDIA_ZONE_TYPES = [
     },
     {
         key: "stop",
-        icon: "icons/i1.webp",
+        icon: "icons/i1.png",
         title: "Остановитесь здесь",
         description: "Хорошее место чтобы остановиться и дослушать аудиорассказ",
         photos: []
     },
     {
         key: "attraction",
-        icon: "icons/apanaevi.webp",
+        icon: "icons/kaush.png",
         title: "Достопримечательность",
         description: "Интересное место рядом. Пешком 2–3 минуты.",
         photos: []
@@ -663,6 +680,8 @@ const MEDIA_ZONE_TYPES = [
 ];
 
 function spawnMediaZones(userLat, userLng) {
+    // Медиазоны спавним просто рядом с местом проведения —
+    // не на маршруте, случайно разбросаны в радиусе 80–180м
     const R = 111320;
 
     const offsets = [
@@ -729,6 +748,7 @@ function openMediaMenu(p) {
     descEl.textContent = p.description || "";
     descEl.style.cssText = "font-size:14px;margin-bottom:16px;color:#ffffff;text-shadow:0 0 4px rgba(255,255,255,0.35)";
 
+    // Цена если есть
     const priceEl = document.getElementById("mmPrice");
     if (priceEl) {
         if (p.priceMin && p.priceMax) {
@@ -847,13 +867,16 @@ function hideLoadingZones() {
 async function spawnDynamicZones(userLat, userLng) {
     showLoadingZones();
 
+    // 1. Генерируем 4 точки аудиозон линейно от пользователя
     const rawPoints = generateLinearAudioPoints(userLat, userLng, 4, 50);
 
+    // 2. Снапаем пользователя и все зоны к ближайшей дороге
     const [snappedUser, ...snappedZones] = await Promise.all([
         snapToOSRM([userLng, userLat]),
         ...rawPoints.map(p => snapToOSRM(p))
     ]);
 
+    // 3. Аудиозоны
     const audioZones = snappedZones.map((pt, i) => ({
         id: i + 1,
         type: "audio",
@@ -861,29 +884,33 @@ async function spawnDynamicZones(userLat, userLng) {
         lng: pt[0],
         radius: 15,
         visited: false,
-        audio: `audio/Demo${i + 1}.m4a`
+        audio: `audio/${i + 1}.m4a`
     }));
 
     zones = [...audioZones];
     totalAudioZones = audioZones.length;
     updateProgress();
 
+    // 4. Строим маршрут СЕГМЕНТАМИ: я→1, 1→2, 2→3, 3→4
+    // Каждый сегмент — отдельный OSRM запрос, без кольца
     const waypoints = [snappedUser, ...snappedZones];
     const segmentCoords = await Promise.all(
         waypoints.slice(0, -1).map((from, i) => buildOSRMSegment(from, waypoints[i + 1]))
     );
 
+    // Склеиваем все сегменты в один fullRoute, без дублей стыков
     const allRouteCoords = [];
     segmentCoords.forEach((seg, i) => {
         if (i === 0) {
             allRouteCoords.push(...seg);
         } else {
-            allRouteCoords.push(...seg.slice(1));
+            allRouteCoords.push(...seg.slice(1)); // первая точка = последняя предыдущего
         }
     });
 
     fullRoute = allRouteCoords.map(c => ({ coord: [c[0], c[1]] }));
 
+    // 5. Рисуем слой аудиозон
     if (map.getSource("audio-circles")) {
         map.getSource("audio-circles").setData({
             type: "FeatureCollection",
@@ -933,6 +960,7 @@ async function spawnDynamicZones(userLat, userLng) {
         map.on("mouseleave", "audio-circles-layer", () => { map.getCanvas().style.cursor = ""; });
     }
 
+    // 6. Рисуем маршрут
     ["route-remaining", "route-passed"].forEach(id => {
         if (map.getLayer(id + "-line")) map.removeLayer(id + "-line");
         if (map.getSource(id)) map.removeSource(id);
@@ -957,8 +985,10 @@ async function spawnDynamicZones(userLat, userLng) {
         paint: { "line-width": 4, "line-color": "#333333" }
     });
 
+    // 7. Медиазоны — рядом с местом, не на маршруте
     spawnMediaZones(userLat, userLng);
 
+    // 8. Камера и стрелка
     map.easeTo({ center: [userLng, userLat], zoom: 17, duration: 800 });
     map.once("moveend", () => updateNextZoneMarker());
 
@@ -1173,7 +1203,7 @@ if (startBtn) {
    ======================================================== */
 
 document.addEventListener("DOMContentLoaded", () => {
-    showOnboarding();
+    showOnboarding(); // показываем онбординг при загрузке
     initMap();
 });
 
