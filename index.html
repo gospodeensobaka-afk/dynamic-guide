@@ -1,54 +1,230 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mini Audio Guide</title>
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet" />
-    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
-    <script src="app.core.v2.js?v=9" defer></script>
-    <script src="app.media.js?v=9" defer></script>
-</head>
-<body>
-    <div id="audioWrapper">
-        <audio id="globalAudio" controls preload="auto"></audio>
-    </div>
-    <button id="startTourBtn"
-        style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:999999;">
-        Начать экскурсию
-    </button>
-    <button id="notReadyBtn">
-        Не успеваю
-    </button>
-    <div id="tourProgress">
-        Пройдено: 0 из 0
-    </div>
-    <div id="zonesLoadingMsg" style="
-        display: none;
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(0,0,0,0.75);
-        color: white;
-        padding: 16px 24px;
-        border-radius: 14px;
-        font-size: 16px;
-        z-index: 999999;
-        text-align: center;
-        backdrop-filter: blur(6px);
-        pointer-events: none;
-    ">
-        📍 Строим маршрут…
-    </div>
-    <div id="map"></div>
-    <div id="photoOverlay" class="photo-overlay hidden">
-        <div class="photo-inner">
-            <img id="photoImage" src="">
-            <button id="closePhotoBtn" class="close-photo-btn">✕</button>
-        </div>
-    </div>
-    <div id="galleryOverlay" class="hidden"></div>
-</body>
-</html>
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    z-index: 1;
+}
+
+/* === PHOTO BUTTON === */
+.photo-btn {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 1000;
+  padding: 10px 14px;
+  background: #ffffff;
+  border-radius: 8px;
+  border: none;
+  font-size: 13px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  cursor: pointer;
+}
+
+/* === PHOTO OVERLAY === */
+.photo-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
+}
+
+.photo-overlay.hidden {
+  display: none;
+}
+
+.photo-inner {
+  position: relative;
+  max-width: 90%;
+  max-height: 80%;
+}
+
+.photo-inner img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 12px;
+}
+
+.close-photo-btn {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  background: #ffffff;
+  border-radius: 50%;
+  border: none;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+.photo-btn-glow {
+    box-shadow: 0 0 8px 2px rgba(0, 150, 255, 0.6);
+    border: 1px solid rgba(0, 150, 255, 0.8);
+    transition: box-shadow 0.2s ease, border 0.2s ease;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* === HIDE SUPER DEBUG PANEL === */
+#superDebug {
+    display: none !important;
+}
+
+/* === START TOUR BUTTON === */
+#startTourBtn {
+    padding: 14px 22px;
+    font-size: 18px;
+    border-radius: 12px;
+    background: #007aff;
+    color: white;
+    border: none;
+    white-space: nowrap;
+    max-width: 80%;
+    text-align: center;
+}
+
+/* === NOT READY BUTTON (перенесена на место компаса) === */
+#notReadyBtn {
+    position: absolute;
+    top: 53px;
+    left: 13px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.55);
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    border: none;
+    font-size: 14px;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+
+    /* мягкое белое свечение текста */
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
+}
+
+/* === PROGRESS BAR (новый) === */
+#tourProgress {
+    position: absolute;
+    top: 56.4px;
+    left: calc(1px + 70px + 50px);
+    background: rgba(0, 0, 0, 0.55);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 999999;
+    backdrop-filter: blur(4px);
+}
+
+/* === AUDIO WRAPPER === */
+#audioWrapper {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    height: 36px;
+    width: calc(100% - 140px);
+    display: flex;
+    align-items: center;
+    z-index: 999999;
+}
+
+#globalAudio {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+}
+
+/* === GENERIC CONTROL BUTTON (оставляем для фото/галереи) === */
+.control-btn {
+    position: absolute;
+    padding: 10px 14px;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    border: none;
+    font-size: 14px;
+    z-index: 1000;
+}
+
+/* === UI EDITOR (оставляем, если нужен) === */
+.ui-editable {
+    position: absolute !important;
+    cursor: move !important;
+    user-select: none !important;
+    z-index: 999999 !important;
+}
+
+.ui-editable.edit-mode {
+    outline: 2px dashed #00ff00;
+}
+
+/* === MOBILE FIXES === */
+@media (max-width: 600px) {
+    #globalAudio {
+        top: 210px;
+        left: 10px;
+        width: calc(100% - 20px);
+    }
+}
+
+/* === GALLERY OVERLAY === */
+#galleryOverlay {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70%;
+    height: 18%;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 16px;
+    padding: 12px;
+    z-index: 200000;
+
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+
+    overflow-x: auto;
+    overflow-y: hidden;
+
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+}
+
+#galleryTrack {
+    display: inline-flex;
+    flex-direction: row;
+    gap: 12px;
+    white-space: nowrap;
+}
+
+#galleryTrack > div {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+}
+
+#galleryTrack::-webkit-scrollbar,
+#galleryOverlay::-webkit-scrollbar {
+    display: none;
+}
+
