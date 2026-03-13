@@ -14,6 +14,7 @@ const videoTimings = {
         16.48: { open: "videos/rickroll.mp4", duration: 12000 }
     }
 };
+
 /* === MISSED MEDIA STORAGE === */
 let missedMedia = {};
 let galleryFlatPhotos = [];
