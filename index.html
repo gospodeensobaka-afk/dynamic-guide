@@ -5,73 +5,64 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mini Audio Guide</title>
 
-    <link rel="stylesheet" href="styles.css">
+    <!-- VK Bridge — первым, до всего остального -->
+    <script src="https://unpkg.com/@vkontakte/vk-bridge@2.29.0/dist/browser.min.js"></script>
+    <script>
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                vkBridge.send('VKWebAppInit');
+            });
+        } else {
+            vkBridge.send('VKWebAppInit');
+        }
+    </script>
 
-    <!-- MapLibre -->
+    <link rel="stylesheet" href="styles.css">
     <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/@vkontakte/vk-bridge@2.29.0/dist/browser.min.js"></script>
-<script>
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      vkBridge.send('VKWebAppInit');
-    });
-  } else {
-    vkBridge.send('VKWebAppInit');
-  }
-</script>
-
-
-     <script src="app.core.v2.js?v=9" defer></script>
+    <script src="app.core.v2.js?v=9" defer></script>
     <script src="app.media.js?v=9" defer></script>
-    
 </head>
-
 <body>
-
     <!-- AUDIO WRAPPER -->
     <div id="audioWrapper">
         <audio id="globalAudio" controls preload="auto"></audio>
     </div>
-
     <!-- START TOUR BUTTON -->
     <button id="startTourBtn"
         style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:999999;">
         Начать экскурсию
     </button>
-
-    <!-- NOT READY BUTTON (перенесена на место компаса) -->
+    <!-- NOT READY BUTTON -->
     <button id="notReadyBtn">
         Не успеваю
     </button>
+    <!-- PROGRESS BAR -->
+    <div id="tourProgress">
+        Пройдено: 0 из 0
+    </div>
 
-    <!-- PROGRESS BAR (справа от "Не успеваю") -->
-   <div id="tourProgress">
-       Пройдено: 0 из 0
-   </div>
-       
-<div id="zonesLoadingMsg" style="
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0,0,0,0.75);
-    color: white;
-    padding: 16px 24px;
-    border-radius: 14px;
-    font-size: 16px;
-    z-index: 999999;
-    text-align: center;
-    backdrop-filter: blur(6px);
-    pointer-events: none;
-">
-    📍 Строим маршрут…
-</div>
+    <div id="zonesLoadingMsg" style="
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.75);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 14px;
+        font-size: 16px;
+        z-index: 999999;
+        text-align: center;
+        backdrop-filter: blur(6px);
+        pointer-events: none;
+    ">
+        📍 Строим маршрут…
+    </div>
 
     <!-- MAP -->
     <div id="map"></div>
-
     <!-- PHOTO OVERLAY -->
     <div id="photoOverlay" class="photo-overlay hidden">
         <div class="photo-inner">
@@ -79,21 +70,7 @@
             <button id="closePhotoBtn" class="close-photo-btn">✕</button>
         </div>
     </div>
-
     <!-- GALLERY OVERLAY -->
     <div id="galleryOverlay" class="hidden"></div>
-
- 
-
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
