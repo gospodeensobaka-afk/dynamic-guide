@@ -505,6 +505,7 @@ function handleMapMove() {
 function simulateAudioZone(id) {
     const z = zones.find(z => z.id === id && z.type === "audio");
     if (!z) return;
+   if (window.__simDisabled) return;
     if (!z.visited) { z.visited = true; visitedAudioZones++; updateProgress(); }
     updateCircleColors();
     updateNextZoneMarker();
@@ -1221,7 +1222,15 @@ if (startBtn) {
    ========================= INIT =========================
    ======================================================== */
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+    try {
+        const simResp = await fetch("https://aguidekzn.ru/api/dsim");
+        const simData = await simResp.json();
+        if (!simData.simEnabled) {
+            window.__simDisabled = true;
+        }
+    } catch(e) {}
+
     showOnboarding();
     initMap();
 });
