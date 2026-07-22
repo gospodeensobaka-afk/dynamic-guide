@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Пульт квеста — Казань</title>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Mulish:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root {
+    --gold: #E8C97A;
+    --gold-dim: rgba(232,201,122,0.2);
+    --bg: #080B11;
+    --surface: #0E1320;
+    --border: rgba(232,201,122,0.15);
+    --text: rgba(255,255,255,0.9);
+    --muted: rgba(255,255,255,0.4);
+    --green: #30D158;
+    --red: #FF453A;
+}
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Mulish', sans-serif;
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+}
+.header {
+    text-align: center;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+}
+.header-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+}
+.header-sub {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+.status-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.status-label { font-size: 13px; color: var(--muted); }
+.status-value {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gold);
+}
+.status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+.stop-btn {
+    width: 100%;
+    height: 52px;
+    border: 1px solid rgba(255,69,58,0.3);
+    border-radius: 14px;
+    background: rgba(255,69,58,0.08);
+    color: var(--red);
+    font-family: 'Mulish', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 28px;
+    transition: all 0.2s;
+}
+.stop-btn:active { background: rgba(255,69,58,0.15); }
+
+.section-label {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 32px;
+}
+
+.quest-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 16px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.quest-btn:active { transform: scale(0.97); }
+.quest-btn.active {
+    border-color: var(--gold);
+    background: var(--gold-dim);
+}
+.quest-btn.active::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--gold);
+}
+.quest-num {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--gold);
+    line-height: 1;
+    margin-bottom: 4px;
+}
+.quest-name {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+}
+.quest-btn.active .quest-name { color: rgba(255,255,255,0.6); }
+
+.active-badge {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: transform 0.3s ease;
+    white-space: nowrap;
+    z-index: 9999;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.ok { color: var(--green); border-color: rgba(48,209,88,0.3); }
+.toast.err { color: var(--red); border-color: rgba(255,69,58,0.3); }
+
+.secret-wrap {
+    margin-bottom: 20px;
+}
+.secret-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: var(--text);
+    font-family: 'Mulish', sans-serif;
+    font-size: 15px;
+    outline: none;
+}
+.secret-input:focus { border-color: rgba(232,201,122,0.4); }
+</style>
+</head>
+<body>
+
+<!-- ЭКРАН ПАРОЛЯ -->
+<div id="loginScreen" style="position:fixed;inset:0;background:#080B11;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:16px;padding:24px;">
+    <div style="font-family:'Unbounded',sans-serif;font-size:20px;font-weight:700;color:#E8C97A;letter-spacing:0.1em;">🎯 ПУЛЬТ КВЕСТА</div>
+    <div style="font-size:12px;color:rgba(255,255,255,0.4);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:8px;">Введите пароль</div>
+    <input id="loginInput" type="password" placeholder="Пароль" autofocus
+        style="width:100%;max-width:320px;background:#0E1320;border:1px solid rgba(232,201,122,0.3);border-radius:12px;padding:16px;color:white;font-size:16px;outline:none;text-align:center;"
+        onkeydown="if(event.key==='Enter')checkLogin()"/>
+    <button onclick="checkLogin()"
+        style="width:100%;max-width:320px;height:52px;background:#E8C97A;color:#080B11;border:none;border-radius:12px;font-family:'Mulish',sans-serif;font-size:15px;font-weight:700;cursor:pointer;">
+        Войти
+    </button>
+    <div id="loginError" style="color:#FF453A;font-size:13px;display:none;">Неверный пароль</div>
+</div>
+
+<!-- ОСНОВНОЙ ПУЛЬТ (скрыт до входа) -->
+<div id="mainScreen" style="display:none;">
+
+<div class="header">
+    <div class="header-title">🎯 ПУЛЬТ КВЕСТА</div>
+    <div class="header-sub">Казань · Старо-Татарская слобода</div>
+</div>
+
+<div class="status-bar">
+    <div>
+        <div class="status-label">Текущая загадка</div>
+        <div class="status-value" id="currentLabel">—</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+        <div class="status-dot" id="statusDot"></div>
+        <span style="font-size:12px;color:var(--muted)" id="statusText">Подключение…</span>
+    </div>
+</div>
+
+<button class="stop-btn" onclick="setQuest(0)">⏹ Остановить квест (показать ожидание)</button>
+
+<div class="section-label">Загадки</div>
+<div class="grid" id="questGrid"></div>
+
+</div><!-- /mainScreen -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = "https://aguidekzn.ru/api";
+const CORRECT_PASSWORD = "4201";
+
+// Зеркало состояния для VK mini app (читает jsonbin, не твой сервер)
+const JSONBIN_ID  = "6a611608da38895dfe80e7aa";
+const JSONBIN_KEY = "$2a$10$BGdTf9HzuQ8IaHVTBnp/hevLYS0wmW2BrH/pGI6oFMtv7c.zocgfG";
+
+async function mirrorToJsonbin(id) {
+    try {
+        await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Master-Key": JSONBIN_KEY
+            },
+            body: JSON.stringify({ current: id, updated_at: Math.floor(Date.now() / 1000) })
+        });
+    } catch (e) {
+        console.warn("jsonbin mirror failed:", e);
+    }
+}
+
+function checkLogin() {
+    const val = document.getElementById("loginInput").value.trim();
+    if (val === CORRECT_PASSWORD) {
+        document.getElementById("loginScreen").style.display = "none";
+        document.getElementById("mainScreen").style.display = "block";
+        pollState();
+        setInterval(pollState, 3000);
+        buildGrid();
+    } else {
+        document.getElementById("loginError").style.display = "block";
+        document.getElementById("loginInput").value = "";
+        setTimeout(() => document.getElementById("loginError").style.display = "none", 2000);
+    }
+}
+
+const QUESTS = [
+    { id:1,  name:"Площадь" },
+    { id:2,  name:"Сад слёз" },
+    { id:3,  name:"Дом Шамиля" },
+    { id:4,  name:"Розовый дом" },
+    { id:5,  name:"7-я поликлиника" },
+    { id:6,  name:"Синий дом" },
+    { id:7,  name:"Дом Каушчи" },
+    { id:8,  name:"Апанаевская мечеть" },
+    { id:9,  name:"Озеро Кабан" },
+    { id:10, name:"Памятник Марджани" },
+    { id:11, name:"Мечеть" },
+    { id:12, name:"Исламский колледж" },
+    { id:13, name:"Точка на карте" },
+    { id:14, name:"Финал" },
+];
+
+let currentId = null;
+
+function buildGrid() {
+    const grid = document.getElementById("questGrid");
+    QUESTS.forEach(q => {
+        const btn = document.createElement("button");
+        btn.className = "quest-btn";
+        btn.id = `btn-${q.id}`;
+        btn.onclick = () => setQuest(q.id);
+        btn.innerHTML = `<div class="quest-num">${q.id}</div><div class="quest-name">${q.name}</div>`;
+        grid.appendChild(btn);
+    });
+}
+
+function updateButtons(id) {
+    currentId = id;
+    const label = document.getElementById("currentLabel");
+    if (id === 0) { label.textContent = "Пауза"; }
+    else {
+        const q = QUESTS.find(q => q.id === id);
+        label.textContent = q ? `#${id} — ${q.name}` : `#${id}`;
+    }
+    QUESTS.forEach(q => {
+        const btn = document.getElementById(`btn-${q.id}`);
+        if (!btn) return;
+        const isActive = q.id === id;
+        btn.classList.toggle("active", isActive);
+        const badge = btn.querySelector(".active-badge");
+        if (isActive && !badge) {
+            const b = document.createElement("div");
+            b.className = "active-badge";
+            btn.appendChild(b);
+        } else if (!isActive && badge) { badge.remove(); }
+    });
+}
+
+async function setQuest(id) {
+    try {
+        const res = await fetch(`${API_BASE}/quest/set`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ secret: "kzn2026", current: id })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            updateButtons(id);
+            showToast(id === 0 ? "Квест остановлен" : `Загадка #${id} активирована`, "ok");
+            mirrorToJsonbin(id); // синхронизируем для VK mini app (туристы без VPN)
+        } else {
+            showToast("Ошибка: " + (data.error || "unknown"), "err");
+        }
+    } catch (e) { showToast("Нет связи с сервером", "err"); }
+}
+
+async function pollState() {
+    try {
+        const res = document.getElementById("mainScreen").style.display === "none" ? null :
+            await fetch(`${API_BASE}/quest/state`, { cache: "no-store" });
+        if (!res || !res.ok) throw new Error();
+        const data = await res.json();
+        const id = Number(data.current);
+        if (id !== currentId) updateButtons(id);
+        document.getElementById("statusDot").style.background = "var(--green)";
+        document.getElementById("statusText").textContent = "Онлайн";
+    } catch (e) {
+        document.getElementById("statusDot").style.background = "var(--red)";
+        document.getElementById("statusText").textContent = "Нет связи";
+    }
+}
+
+function showToast(msg, type) {
+    const toast = document.getElementById("toast");
+    toast.textContent = msg;
+    toast.className = `toast ${type} show`;
+    setTimeout(() => toast.classList.remove("show"), 2500);
+}
+</script>
+</body>
+</html>
