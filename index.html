@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mini Audio Guide</title>
+    <title>Квест — Казань</title>
 
     <!-- VK Bridge — первым, до всего остального -->
     <script src="vk-bridge.min.js"></script>
@@ -17,60 +17,109 @@
         }
     </script>
 
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet" />
-    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
-    <script src="app.core.v2.js?v=9" defer></script>
-    <script src="app.media.js?v=9" defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Mulish:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="maplibre-gl.css" rel="stylesheet" />
+    <script src="maplibre-gl.js"></script>
+    <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-    <!-- AUDIO WRAPPER -->
-    <div id="audioWrapper">
-        <audio id="globalAudio" controls preload="auto"></audio>
-    </div>
-    <!-- START TOUR BUTTON -->
-    <button id="startTourBtn"
-        style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:999999;">
-        Начать экскурсию
-    </button>
-    <!-- NOT READY BUTTON -->
-    <button id="notReadyBtn">
-        Не успеваю
-    </button>
-    <!-- PROGRESS BAR -->
-    <div id="tourProgress">
-        Пройдено: 0 из 0
-    </div>
 
-    <div id="zonesLoadingMsg" style="
-        display: none;
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(0,0,0,0.75);
-        color: white;
-        padding: 16px 24px;
-        border-radius: 14px;
-        font-size: 16px;
-        z-index: 999999;
-        text-align: center;
-        backdrop-filter: blur(6px);
-        pointer-events: none;
-    ">
-        📍 Строим маршрут…
-    </div>
-
-    <!-- MAP -->
-    <div id="map"></div>
-    <!-- PHOTO OVERLAY -->
-    <div id="photoOverlay" class="photo-overlay hidden">
-        <div class="photo-inner">
-            <img id="photoImage" src="">
-            <button id="closePhotoBtn" class="close-photo-btn">✕</button>
+<div id="passwordScreen" class="screen active">
+    <div class="pw-bg"><div class="pw-noise"></div><div class="pw-glow"></div></div>
+    <div class="pw-content">
+        <div class="pw-logo">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="24" r="23" stroke="#E8C97A" stroke-width="1.2" stroke-dasharray="6 3"/>
+                <path d="M24 8 L26 18 L24 16 L22 18 Z" fill="#E8C97A"/>
+                <path d="M24 40 L26 30 L24 32 L22 30 Z" fill="#E8C97A"/>
+                <path d="M8 24 L18 22 L16 24 L18 26 Z" fill="#E8C97A"/>
+                <path d="M40 24 L30 22 L32 24 L30 26 Z" fill="#E8C97A"/>
+                <circle cx="24" cy="24" r="6" stroke="#E8C97A" stroke-width="1"/>
+                <circle cx="24" cy="24" r="2" fill="#E8C97A"/>
+            </svg>
         </div>
+        <div class="pw-title">КВЕСТ</div>
+        <div class="pw-city">Казань</div>
+        <div class="pw-subtitle">Введите код доступа</div>
+        <div class="pw-input-wrap">
+            <input id="passwordInput" type="text" class="pw-input" placeholder="XXXX" maxlength="20" autocomplete="off" autocorrect="off" spellcheck="false"/>
+            <div class="pw-input-line"></div>
+        </div>
+        <button class="pw-btn" onclick="submitPassword()">
+            <span>Войти</span>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M4 9H14M14 9L10 5M14 9L10 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+        </button>
+        <div class="pw-error" id="passwordError">Неверный код. Попробуйте ещё раз.</div>
+        <div class="pw-hint">Код выдаётся гидом перед началом квеста</div>
     </div>
-    <!-- GALLERY OVERLAY -->
-    <div id="galleryOverlay" class="hidden"></div>
+</div>
+
+<div id="questScreen" class="screen">
+    <div id="riddlePanel" class="riddle-panel">
+        <div class="riddle-waiting" id="riddleWaiting">
+            <div class="waiting-icon">🔍</div>
+            <div class="waiting-text">Ожидание следующей загадки…</div>
+            <div class="waiting-dots"><span></span><span></span><span></span></div>
+        </div>
+        <img id="riddleImage" class="riddle-img hidden" src="" alt="Загадка" />
+        <div class="riddle-number" id="riddleNumber"></div>
+    </div>
+    <div id="keyboardToggle" style="display:none">
+        <button id="toggleRiddle" onmousedown="event.preventDefault(); toggleKeyboardView('riddle')">
+            🔍 Загадка
+        </button>
+        <button id="toggleCipher" onmousedown="event.preventDefault(); toggleKeyboardView('cipher')">
+            🔑 Дешифровщик
+        </button>
+    </div>
+    <div id="answerBar" class="answer-bar">
+        <div class="answer-bar-inner">
+            <input id="answerInput" type="text" class="answer-input" placeholder="Введите ответ…" autocomplete="off" autocorrect="off" spellcheck="false"/>
+            <button class="answer-btn" onclick="submitAnswer()">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M4 10H16M16 10L11 5M16 10L11 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+        <div class="answer-feedback" id="answerFeedback"></div>
+    </div>
+    <div id="cipherPanel" class="cipher-panel">
+        <div class="cipher-empty" id="cipherEmpty"><span>Дешифровщики появятся вместе с загадкой</span></div>
+        <div class="cipher-buttons" id="cipherButtons"></div>
+        <div class="cipher-preview" id="cipherPreview"></div>
+    </div>
+</div>
+
+<div id="mapScreen" class="screen">
+    <div id="map"></div>
+    <button class="map-back-btn" onclick="backToQuest()">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M13 4L6 10L13 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        Загадки
+    </button>
+    <div class="map-hint" id="mapHint"></div>
+    <div class="map-progress" id="mapProgress"></div>
+</div>
+
+<div id="successOverlay" class="success-overlay hidden">
+    <div class="success-content">
+        <div class="success-icon">✓</div>
+        <div class="success-title">Верно!</div>
+        <div class="success-text" id="successText">Открываю карту…</div>
+    </div>
+</div>
+
+<div id="cipherOverlay" class="cipher-overlay hidden" onclick="closeCipherOverlay()">
+    <div class="cipher-overlay-inner" onclick="event.stopPropagation()">
+        <img id="cipherOverlayImg" src="" alt="" />
+        <button class="cipher-overlay-close" onclick="closeCipherOverlay()">✕</button>
+    </div>
+</div>
+
+<script src="app.js?v=2"></script>
 </body>
 </html>
