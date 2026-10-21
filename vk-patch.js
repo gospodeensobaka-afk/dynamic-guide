@@ -2,7 +2,7 @@
    VK-PATCH v2 (с отладкой) — подключается ПОСЛЕ app.js
    ======================================================== */
 
-var VK_DEBUG    = false;   // когда всё заработает, поменяй на false
+var VK_DEBUG    = true;   // когда всё заработает, поменяй на false
 var VK_GROUP_ID = "236911218";
 var VK_APP_ID   = Number(new URLSearchParams(location.search).get("vk_app_id")) || 0;
 var VK_POLL_MS  = 4000;
