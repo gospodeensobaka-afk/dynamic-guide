@@ -4,21 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Квест — Казань</title>
-
-    <!-- VK Bridge — первым, до всего остального -->
-    <script src="vk-bridge.min.js"></script>
-    <script>
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                vkBridge.send('VKWebAppInit');
-            });
-        } else {
-            vkBridge.send('VKWebAppInit');
-        }
-    </script>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Mulish:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="maplibre-gl.css" rel="stylesheet" />
     <script src="maplibre-gl.js"></script>
     <link rel="stylesheet" href="styles.css" />
@@ -120,6 +105,8 @@
     </div>
 </div>
 
+<script src="vk-bridge.min.js"></script>
 <script src="app.js?v=2"></script>
+<script src="vk-patch.js?v=1"></script>
 </body>
 </html>
