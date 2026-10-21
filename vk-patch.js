@@ -2,7 +2,7 @@
    VK-PATCH v2 (с отладкой) — подключается ПОСЛЕ app.js
    ======================================================== */
 
-var VK_DEBUG    = true;   // когда всё заработает, поменяй на false
+var VK_DEBUG    = false;   // когда всё заработает, поменяй на false
 var VK_GROUP_ID = "236911218";
 var VK_APP_ID   = Number(new URLSearchParams(location.search).get("vk_app_id")) || 0;
 var VK_POLL_MS  = 4000;
@@ -92,3 +92,19 @@ function initMap() {
 function requestCompassPermission() {}
 function startGPS() {}
 function createArrow() {}
+
+/* ── КАРТА: подгоняем размер при открытии и сдвигаем кнопки ниже шапки ВК ── */
+var vkOrigShowScreen = showScreen;
+showScreen = function (id) {
+    vkOrigShowScreen(id);
+    if (id === "mapScreen" && map) {
+        map.resize();
+        setTimeout(function () { map.resize(); }, 150);
+    }
+};
+
+var vkStyle = document.createElement("style");
+vkStyle.textContent =
+    ".map-back-btn{top:88px !important}" +
+    ".map-progress{top:88px !important;right:auto !important;left:50% !important;transform:translateX(-50%)}";
+document.head.appendChild(vkStyle);
