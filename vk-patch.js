@@ -1,8 +1,10 @@
 /* ========================================================
-   VK-PATCH v2 (с отладкой) — подключается ПОСЛЕ app.js
+   VK-PATCH v5 — подключается ПОСЛЕ app.js
+   Номер загадки берётся из ОПИСАНИЯ группы ВК.
+   Пустое описание = пауза (экран ожидания).
    ======================================================== */
 
-var VK_DEBUG    = true;   // когда всё заработает, поменяй на false
+var VK_DEBUG    = true;   // когда всё проверишь, поменяй на false
 var VK_GROUP_ID = "236911218";
 var VK_APP_ID   = Number(new URLSearchParams(location.search).get("vk_app_id")) || 0;
 var VK_POLL_MS  = 4000;
@@ -20,7 +22,7 @@ function dbg(text) {
     }
     vkDbgEl.textContent = text;
 }
-dbg("патч v2 загружен. app_id=" + VK_APP_ID);
+dbg("патч v5 загружен. app_id=" + VK_APP_ID);
 
 if (typeof vkBridge === "undefined") {
     dbg("ОШИБКА: vkBridge не найден (нет vk-bridge.min.js)");
@@ -37,9 +39,9 @@ async function getVkToken() {
     return vkToken;
 }
 
-/* ── ОПРОС: читаем стену группы ── */
+/* ── ОПРОС: читаем описание группы ── */
 function startPolling() {
-    dbg("опрос запущен (патч)");
+    dbg("опрос запущен (патч v5)");
     pollOnce();
     pollingTimer = setInterval(pollOnce, VK_POLL_MS);
 }
@@ -48,15 +50,17 @@ async function pollOnce() {
     try {
         var token = await getVkToken();
         var r = await vkBridge.send("VKWebAppCallAPIMethod", {
-            method: "wall.get",
-            params: { owner_id: "-" + VK_GROUP_ID, count: 5, v: "5.199", access_token: token }
+            method: "groups.getById",
+            params: { group_id: VK_GROUP_ID, fields: "description", v: "5.199", access_token: token }
         });
-        var items = (r.response && r.response.items) || [];
-        var texts = items.map(function (it) { return "«" + String(it.text || "").slice(0, 12) + "»"; });
-        var post = items.find(function (it) { return /^\s*\d+\s*$/.test(it.text || ""); });
-        if (!post) { dbg("посты: " + texts.join(" ") + " → нет поста-цифры"); return; }
-        var id = Number(post.text);
-        dbg("посты: " + texts.join(" ") + " → загадка " + id);
+        var g = r.response && (r.response.groups ? r.response.groups[0] : r.response[0]);
+        var text = g ? String(g.description || "").trim() : "";
+        if (text !== "" && !/^\d+$/.test(text)) {
+            dbg("описание: «" + text.slice(0, 20) + "» → не цифра, жду");
+            return;
+        }
+        var id = text === "" ? 0 : Number(text);
+        dbg("описание: «" + text + "» → загадка " + id);
         if (id !== lastPolledId) {
             lastPolledId = id;
             if (id === 0) showWaiting();
