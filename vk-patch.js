@@ -1,49 +1,95 @@
 /* ========================================================
-   VK-PATCH v7 — подключается ПОСЛЕ app.js
+   VK-PATCH v8 — подключается ПОСЛЕ app.js
    Номер загадки берётся из ОПИСАНИЯ группы ВК.
    Пустое описание = пауза (экран ожидания).
    Карта берётся из локальных картинок (maptiles/).
    ======================================================== */
 
-var VK_DEBUG    = true;   // true = показать зелёную строку отладки внизу
+var VK_DEBUG    = true;
 var VK_GROUP_ID = "236911218";
 var VK_APP_ID   = Number(new URLSearchParams(location.search).get("vk_app_id")) || 0;
 var VK_POLL_MS  = 4000;
 var vkToken     = null;
 
-/* ── отладочная строка (выключена, пока VK_DEBUG = false) ── */
-var vkDbgEl = null, vkDbgLines = [];
+/* Диагностика: приподнятая панель и только полезные, не повторяющиеся строки. */
+var vkDbgEl = null;
+var vkDbgLines = [];
+var VK_DEBUG_MAX_LINES = 10;
+var lastInvalidDescription = null;
+var lastPollError = null;
+var vkLoggedMapErrors = Object.create(null);
+
 function dbg(text) {
     if (!VK_DEBUG) return;
-    vkDbgLines.push(String(text));
-    if (vkDbgLines.length > 5) vkDbgLines.shift();
+
+    var line = "[" + new Date().toLocaleTimeString() + "] " + String(text);
+    vkDbgLines.push(line);
+    if (vkDbgLines.length > VK_DEBUG_MAX_LINES) vkDbgLines.shift();
+
     if (!vkDbgEl) {
         vkDbgEl = document.createElement("div");
-        vkDbgEl.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:2147483647;padding:6px 8px;font:11px/1.35 monospace;color:#7CFF9B;background:rgba(0,0,0,.85);pointer-events:none;word-break:break-all;max-height:35vh;overflow:hidden;";
+        vkDbgEl.id = "vk-debug-panel";
+        vkDbgEl.style.cssText =
+            "position:fixed;left:0;right:0;" +
+            "bottom:calc(100px + env(safe-area-inset-bottom, 0px));" +
+            "z-index:2147483647;padding:7px 9px;" +
+            "font:11px/1.4 monospace;color:#7CFF9B;" +
+            "background:rgba(0,0,0,.94);pointer-events:none;" +
+            "white-space:pre-wrap;overflow-wrap:anywhere;" +
+            "max-height:38vh;overflow:hidden;box-sizing:border-box;";
         document.body.appendChild(vkDbgEl);
     }
+
     vkDbgEl.textContent = vkDbgLines.join("\n");
 }
-dbg("патч v7 загружен. app_id=" + VK_APP_ID);
+
+function dbgMapErrorOnce(key, text) {
+    if (vkLoggedMapErrors[key]) return;
+    vkLoggedMapErrors[key] = true;
+    dbg(text);
+}
+
+dbg("патч v8 загружен; app_id=" + VK_APP_ID);
+
+/* Показываем ошибки загрузки ресурсов и JS, если они возникнут после запуска патча. */
+window.addEventListener("error", function (e) {
+    var target = e && e.target;
+    if (target && target !== window) {
+        var url = target.src || target.href;
+        if (url) dbg("РЕСУРС НЕ ЗАГРУЗИЛСЯ: " + url);
+        return;
+    }
+    if (e && e.message) {
+        dbg("JS ERROR: " + e.message + (e.filename ? "; " + e.filename + ":" + e.lineno : ""));
+    }
+}, true);
+
+window.addEventListener("unhandledrejection", function (e) {
+    var reason = e && e.reason;
+    var message = reason && reason.message ? reason.message : String(reason || "unknown");
+    dbg("PROMISE ERROR: " + message.slice(0, 180));
+});
 
 if (typeof vkBridge === "undefined") {
-    dbg("ОШИБКА: vkBridge не найден (нет vk-bridge.min.js)");
+    dbg("ОШИБКА: vkBridge не найден — проверь vk-bridge.min.js");
 } else {
-    vkBridge.send("VKWebAppInit").catch(function () {});
+    vkBridge.send("VKWebAppInit").catch(function (e) {
+        dbg("VKWebAppInit ERROR: " + (e && e.message ? e.message : String(e)));
+    });
 }
 
 async function getVkToken() {
     if (vkToken) return vkToken;
-    dbg("запрашиваю доступ…");
+    dbg("запрашиваю доступ VK…");
     var r = await vkBridge.send("VKWebAppGetAuthToken", { app_id: VK_APP_ID, scope: "" });
     vkToken = r.access_token;
-    dbg("доступ получен");
+    dbg("доступ VK получен");
     return vkToken;
 }
 
-/* ── ОПРОС: читаем описание группы ── */
+/* Опрос: читаем описание группы. Одинаковый номер не повторяем в панели. */
 function startPolling() {
-    dbg("опрос запущен (патч v7)");
+    dbg("опрос группы запущен");
     pollOnce();
     pollingTimer = setInterval(pollOnce, VK_POLL_MS);
 }
@@ -57,21 +103,32 @@ async function pollOnce() {
         });
         var g = r.response && (r.response.groups ? r.response.groups[0] : r.response[0]);
         var text = g ? String(g.description || "").trim() : "";
+
         if (text !== "" && !/^\d+$/.test(text)) {
-            dbg("описание: «" + text.slice(0, 20) + "» → не цифра, жду");
+            if (text !== lastInvalidDescription) {
+                dbg("описание группы не число: «" + text.slice(0, 40) + "»; жду номер загадки");
+                lastInvalidDescription = text;
+            }
             return;
         }
+
+        lastInvalidDescription = null;
+        lastPollError = null;
         var id = text === "" ? 0 : Number(text);
-        dbg("описание: «" + text + "» → загадка " + id);
         if (id !== lastPolledId) {
             lastPolledId = id;
+            dbg("описание группы «" + (text || "пусто") + "»; загадка " + id);
             if (id === 0) showWaiting();
             else loadQuest(id);
         }
     } catch (e) {
         var msg = "";
-        try { msg = JSON.stringify(e && e.error_data ? e.error_data : e); } catch (x) { msg = String(e); }
-        dbg("ОШИБКА опроса: " + msg);
+        try { msg = JSON.stringify(e && e.error_data ? e.error_data : e); }
+        catch (x) { msg = String(e); }
+        if (msg !== lastPollError) {
+            dbg("ОШИБКА опроса VK: " + msg);
+            lastPollError = msg;
+        }
         if (!vkToken) {
             clearInterval(pollingTimer);
             var t = document.querySelector("#riddleWaiting .waiting-text");
@@ -80,11 +137,22 @@ async function pollOnce() {
     }
 }
 
-/* ── КАРТА: локальные картинки (без интернета-плиток), без стрелки и GPS ── */
+/* Карта: локальные картинки (без интернет-плиток), без стрелки и GPS. */
 function initMap() {
     if (map) return;
+
     var style, opts;
-    var local = (typeof VK_MAP !== "undefined" && VK_MAP && VK_MAP.layers && VK_MAP.layers.length);
+    var hasMapConfig = typeof VK_MAP !== "undefined" && VK_MAP;
+    var local = !!(hasMapConfig && VK_MAP.layers && VK_MAP.layers.length);
+
+    if (!hasMapConfig) {
+        dbg("КАРТА: VK_MAP не определён — map-config.js не загрузился или завершился с ошибкой");
+    } else if (!local) {
+        dbg("КАРТА: VK_MAP есть, но список layers пуст; будет выбрана онлайн-карта");
+    } else {
+        var layerNames = VK_MAP.layers.map(function (l) { return l.id; }).join(", ");
+        dbg("КАРТА: локальный конфиг загружен; слоёв " + VK_MAP.layers.length + ": " + layerNames);
+    }
 
     if (local) {
         var sources = {};
@@ -95,7 +163,7 @@ function initMap() {
         });
         style = { version: 8, sources: sources, layers: layers };
     } else {
-        // запасной вариант, если картинок карты ещё нет: онлайн-плитки
+        // Запасной вариант, если локальная конфигурация карты недоступна.
         style = {
             version: 8,
             sources: { base: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256 } },
@@ -104,26 +172,49 @@ function initMap() {
     }
 
     opts = { container: "map", style: style, center: MAP_CENTER, zoom: MAP_ZOOM, attributionControl: false };
-    if (local && VK_MAP.bounds) { opts.maxBounds = VK_MAP.bounds; opts.minZoom = 14; opts.maxZoom = 18.5; }
+    if (local && VK_MAP.bounds) {
+        opts.maxBounds = VK_MAP.bounds;
+        opts.minZoom = 14;
+        opts.maxZoom = 18.5;
+    }
 
-    dbg("карта: " + (local ? "локальная, кусков: " + VK_MAP.layers.length : "ОНЛАЙН (maptiles/map-config.js не найден)"));
+    dbg("КАРТА: создаю MapLibre; источник " + (local ? "локальные изображения" : "онлайн-плитки OSM"));
     map = new maplibregl.Map(opts);
-    map.on("error", function (e) {
-        var m = (e && e.error && e.error.message) ? e.error.message : (e && e.sourceId ? "источник " + e.sourceId : "?");
-        dbg("ошибка карты: " + String(m).slice(0, 120));
+
+    map.on("load", function () {
+        dbg("КАРТА: MapLibre load завершён");
     });
+
+    map.on("error", function (e) {
+        var err = e && e.error;
+        var message = err && err.message ? err.message : "неизвестная ошибка";
+        var source = e && e.sourceId ? e.sourceId : "неизвестный источник";
+        var url = err && err.url ? "; URL: " + err.url : "";
+        var key = source + "|" + message + url;
+        dbgMapErrorOnce(key, "КАРТА ERROR [" + source + "]: " + message + url);
+    });
+
+    map.on("sourcedata", function (e) {
+        if (e && e.isSourceLoaded && e.sourceId) {
+            dbgMapErrorOnce("loaded:" + e.sourceId, "КАРТА: источник загружен — " + e.sourceId);
+        }
+    });
+
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "© участники OpenStreetMap" }));
 
-    // карта собрана из картинок крупности z18, поэтому ближе 17.5 приближать смысла нет
+    // Карта собрана из изображений крупности z18, поэтому ограничиваем приближение.
     var origFly = map.flyTo.bind(map);
-    map.flyTo = function (o) { if (o && o.zoom > 17.5) o.zoom = 17.5; return origFly(o); };
+    map.flyTo = function (o) {
+        if (o && o.zoom > 17.5) o.zoom = 17.5;
+        return origFly(o);
+    };
 }
 
 function requestCompassPermission() {}
 function startGPS() {}
 function createArrow() {}
 
-/* ── КАРТА: подгоняем размер при открытии и сдвигаем кнопки ниже шапки ВК ── */
+/* Подгоняем размер карты при открытии и сдвигаем кнопки ниже шапки VK. */
 var vkOrigShowScreen = showScreen;
 showScreen = function (id) {
     vkOrigShowScreen(id);
