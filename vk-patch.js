@@ -1,17 +1,17 @@
 /* ========================================================
-   VK-PATCH v5 — подключается ПОСЛЕ app.js
+   VK-PATCH v6 — подключается ПОСЛЕ app.js
    Номер загадки берётся из ОПИСАНИЯ группы ВК.
    Пустое описание = пауза (экран ожидания).
+   Карта берётся из локальных картинок (maptiles/).
    ======================================================== */
 
-var VK_DEBUG    = true;   // когда всё проверишь, поменяй на false
+var VK_DEBUG    = false;   // true = показать зелёную строку отладки внизу
 var VK_GROUP_ID = "236911218";
 var VK_APP_ID   = Number(new URLSearchParams(location.search).get("vk_app_id")) || 0;
 var VK_POLL_MS  = 4000;
-var VK_TILES    = ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"];
 var vkToken     = null;
 
-/* ── отладочная строка ── */
+/* ── отладочная строка (выключена, пока VK_DEBUG = false) ── */
 var vkDbgEl = null;
 function dbg(text) {
     if (!VK_DEBUG) return;
@@ -22,7 +22,7 @@ function dbg(text) {
     }
     vkDbgEl.textContent = text;
 }
-dbg("патч v5 загружен. app_id=" + VK_APP_ID);
+dbg("патч v6 загружен. app_id=" + VK_APP_ID);
 
 if (typeof vkBridge === "undefined") {
     dbg("ОШИБКА: vkBridge не найден (нет vk-bridge.min.js)");
@@ -41,7 +41,7 @@ async function getVkToken() {
 
 /* ── ОПРОС: читаем описание группы ── */
 function startPolling() {
-    dbg("опрос запущен (патч v5)");
+    dbg("опрос запущен (патч v6)");
     pollOnce();
     pollingTimer = setInterval(pollOnce, VK_POLL_MS);
 }
@@ -78,19 +78,38 @@ async function pollOnce() {
     }
 }
 
-/* ── КАРТА: без стрелки и GPS ── */
+/* ── КАРТА: локальные картинки (без интернета-плиток), без стрелки и GPS ── */
 function initMap() {
     if (map) return;
-    map = new maplibregl.Map({
-        container: "map",
-        style: {
+    var style, opts;
+    var local = (typeof VK_MAP !== "undefined" && VK_MAP && VK_MAP.layers && VK_MAP.layers.length);
+
+    if (local) {
+        var sources = {};
+        var layers = [{ id: "vk-bg", type: "background", paint: { "background-color": "#0b0e14" } }];
+        VK_MAP.layers.forEach(function (l) {
+            sources[l.id] = { type: "image", url: l.url, coordinates: l.coordinates };
+            layers.push({ id: l.id, type: "raster", source: l.id, paint: { "raster-fade-duration": 0 } });
+        });
+        style = { version: 8, sources: sources, layers: layers };
+    } else {
+        // запасной вариант, если картинок карты ещё нет: онлайн-плитки
+        style = {
             version: 8,
-            sources: { base: { type: "raster", tiles: VK_TILES, tileSize: 256 } },
+            sources: { base: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256 } },
             layers: [{ id: "base", type: "raster", source: "base" }]
-        },
-        center: MAP_CENTER,
-        zoom: MAP_ZOOM
-    });
+        };
+    }
+
+    opts = { container: "map", style: style, center: MAP_CENTER, zoom: MAP_ZOOM, attributionControl: false };
+    if (local && VK_MAP.bounds) { opts.maxBounds = VK_MAP.bounds; opts.minZoom = 14; opts.maxZoom = 18.5; }
+
+    map = new maplibregl.Map(opts);
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "© участники OpenStreetMap" }));
+
+    // карта собрана из картинок крупности z18, поэтому ближе 17.5 приближать смысла нет
+    var origFly = map.flyTo.bind(map);
+    map.flyTo = function (o) { if (o && o.zoom > 17.5) o.zoom = 17.5; return origFly(o); };
 }
 
 function requestCompassPermission() {}
