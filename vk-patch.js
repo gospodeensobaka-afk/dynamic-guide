@@ -1,28 +1,30 @@
 /* ========================================================
-   VK-PATCH v6 — подключается ПОСЛЕ app.js
+   VK-PATCH v7 — подключается ПОСЛЕ app.js
    Номер загадки берётся из ОПИСАНИЯ группы ВК.
    Пустое описание = пауза (экран ожидания).
    Карта берётся из локальных картинок (maptiles/).
    ======================================================== */
 
-var VK_DEBUG    = false;   // true = показать зелёную строку отладки внизу
+var VK_DEBUG    = true;   // true = показать зелёную строку отладки внизу
 var VK_GROUP_ID = "236911218";
 var VK_APP_ID   = Number(new URLSearchParams(location.search).get("vk_app_id")) || 0;
 var VK_POLL_MS  = 4000;
 var vkToken     = null;
 
 /* ── отладочная строка (выключена, пока VK_DEBUG = false) ── */
-var vkDbgEl = null;
+var vkDbgEl = null, vkDbgLines = [];
 function dbg(text) {
     if (!VK_DEBUG) return;
+    vkDbgLines.push(String(text));
+    if (vkDbgLines.length > 5) vkDbgLines.shift();
     if (!vkDbgEl) {
         vkDbgEl = document.createElement("div");
         vkDbgEl.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:2147483647;padding:6px 8px;font:11px/1.35 monospace;color:#7CFF9B;background:rgba(0,0,0,.85);pointer-events:none;word-break:break-all;max-height:35vh;overflow:hidden;";
         document.body.appendChild(vkDbgEl);
     }
-    vkDbgEl.textContent = text;
+    vkDbgEl.textContent = vkDbgLines.join("\n");
 }
-dbg("патч v6 загружен. app_id=" + VK_APP_ID);
+dbg("патч v7 загружен. app_id=" + VK_APP_ID);
 
 if (typeof vkBridge === "undefined") {
     dbg("ОШИБКА: vkBridge не найден (нет vk-bridge.min.js)");
@@ -41,7 +43,7 @@ async function getVkToken() {
 
 /* ── ОПРОС: читаем описание группы ── */
 function startPolling() {
-    dbg("опрос запущен (патч v6)");
+    dbg("опрос запущен (патч v7)");
     pollOnce();
     pollingTimer = setInterval(pollOnce, VK_POLL_MS);
 }
@@ -104,7 +106,12 @@ function initMap() {
     opts = { container: "map", style: style, center: MAP_CENTER, zoom: MAP_ZOOM, attributionControl: false };
     if (local && VK_MAP.bounds) { opts.maxBounds = VK_MAP.bounds; opts.minZoom = 14; opts.maxZoom = 18.5; }
 
+    dbg("карта: " + (local ? "локальная, кусков: " + VK_MAP.layers.length : "ОНЛАЙН (maptiles/map-config.js не найден)"));
     map = new maplibregl.Map(opts);
+    map.on("error", function (e) {
+        var m = (e && e.error && e.error.message) ? e.error.message : (e && e.sourceId ? "источник " + e.sourceId : "?");
+        dbg("ошибка карты: " + String(m).slice(0, 120));
+    });
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "© участники OpenStreetMap" }));
 
     // карта собрана из картинок крупности z18, поэтому ближе 17.5 приближать смысла нет
