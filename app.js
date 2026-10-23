@@ -445,7 +445,7 @@ function preloadAllImages() {
         if (q.riddleImage) srcs.add(q.riddleImage);
         (q.ciphers || []).forEach(c => { if (c.image) srcs.add(c.image); });
     });
-    srcs.forEach(src => { const img = new Image(); img.src = src; });
+    srcs.forEach(src => { const img = new Image(); img.src = window.vkMediaUrl("dynamic-guide", src); });
 }
 
 /* ── ПАРОЛЬ ── */
@@ -514,9 +514,9 @@ function loadQuest(id) {
     document.getElementById("riddleWaiting").classList.add("hidden");
     const img = document.getElementById("riddleImage");
     img.classList.remove("hidden");
-    img.src = quest.riddleImage;
+    img.src = window.vkMediaUrl("dynamic-guide", quest.riddleImage);
     document.getElementById("riddleNumber").textContent = `ЗАГАДКА ${quest.id}`;
-    img.onclick = () => openCipherOverlay(quest.riddleImage);
+    img.onclick = () => openCipherOverlay(window.vkMediaUrl("dynamic-guide", quest.riddleImage));
     img.style.cursor = "zoom-in";
 
     buildCipherButtons(quest.ciphers);
@@ -570,7 +570,8 @@ function selectCipher(cipher, btn, preview) {
     document.querySelectorAll(".cipher-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     preview.classList.remove("empty");
-    preview.innerHTML = `<img class="cipher-preview-img" src="${cipher.image}" alt="${cipher.label}" onclick="openCipherOverlay('${cipher.image}')" />`;
+    const imageUrl = window.vkMediaUrl("dynamic-guide", cipher.image);
+    preview.innerHTML = `<img class="cipher-preview-img" src="${imageUrl}" alt="${cipher.label}" onclick="openCipherOverlay('${imageUrl}')" />`;
 }
 
 function openCipherOverlay(src) {
