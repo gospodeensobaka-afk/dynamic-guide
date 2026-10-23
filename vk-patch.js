@@ -1,5 +1,6 @@
 /* ========================================================
    VK-PATCH v8 — подключается ПОСЛЕ app.js
+   VK-PATCH v9 — подключается ПОСЛЕ app.js
    Номер загадки берётся из ОПИСАНИЯ группы ВК.
    Пустое описание = пауза (экран ожидания).
    Карта берётся из локальных картинок (maptiles/).
@@ -15,6 +16,7 @@ var vkToken     = null;
 var vkDbgEl = null;
 var vkDbgLines = [];
 var VK_DEBUG_MAX_LINES = 10;
+var VK_DEBUG_MAX_LINES = 12;
 var lastInvalidDescription = null;
 var lastPollError = null;
 var vkLoggedMapErrors = Object.create(null);
@@ -50,13 +52,41 @@ function dbgMapErrorOnce(key, text) {
 }
 
 dbg("патч v8 загружен; app_id=" + VK_APP_ID);
+/* Проверяем загрузку конкретных JPG и показываем URL, который запросил браузер. */
+function probeMapImages(layers) {
+    layers.forEach(function (layer) {
+        var url;
+        try {
+            url = new URL(layer.url, document.baseURI).href;
+        } catch (e) {
+            dbg("IMAGE ERROR [" + layer.id + "]: некорректный URL «" + layer.url + "»");
+            return;
+        }
+
+        var image = new Image();
+        image.onload = function () {
+            dbg("IMAGE OK [" + layer.id + "] " + image.naturalWidth + "x" + image.naturalHeight + ": " + url);
+        };
+        image.onerror = function () {
+            dbg("IMAGE ERROR [" + layer.id + "]: " + url + " (сеть, 404 или белый список)");
+        };
+        image.src = url;
+    });
+}
+
+dbg("патч v9 загружен; app_id=" + VK_APP_ID);
 
 /* Показываем ошибки загрузки ресурсов и JS, если они возникнут после запуска патча. */
 window.addEventListener("error", function (e) {
     var target = e && e.target;
     if (target && target !== window) {
+        var tag = String(target.tagName || "").toUpperCase();
+        if (tag === "SCRIPT" || tag === "LINK") {
         var url = target.src || target.href;
         if (url) dbg("РЕСУРС НЕ ЗАГРУЗИЛСЯ: " + url);
+            var url = target.src || target.href;
+            if (url) dbg("РЕСУРС НЕ ЗАГРУЗИЛСЯ [" + tag + "]: " + url);
+        }
         return;
     }
     if (e && e.message) {
@@ -152,6 +182,7 @@ function initMap() {
     } else {
         var layerNames = VK_MAP.layers.map(function (l) { return l.id; }).join(", ");
         dbg("КАРТА: локальный конфиг загружен; слоёв " + VK_MAP.layers.length + ": " + layerNames);
+        probeMapImages(VK_MAP.layers);
     }
 
     if (local) {
