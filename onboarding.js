@@ -7,7 +7,6 @@
   const page=R.shell('relayTourist','<div class="relay-card"><button class="relay-back">← Выбор режима</button><form id="relayLogin"><h1>Ретранслятор фото</h1><label for="relayCode">Код доступа</label><input id="relayCode" type="password" inputmode="numeric" autocomplete="off" maxlength="4"><button>Войти</button></form><div class="relay-status" role="status" aria-live="polite"></div><div class="relay-wait" hidden><div class="relay-orbit"></div>Ожидание фото от гида…</div><button id="relayPhotoButton" hidden aria-label="Увеличить фотографию"><img class="relay-main-photo" alt="Фотография от гида"></button></div>');
   const form=page.querySelector('form'), waiting=page.querySelector('.relay-wait'), photoButton=page.querySelector('#relayPhotoButton'), img=photoButton.querySelector('img'), status=page.querySelector('.relay-status');
   const viewer=R.buildViewer();
-  let gallerySession=null;
   const seen=new Map();
   const gallery=document.createElement('div');gallery.hidden=true;
   const heading=document.createElement('h2');heading.textContent='Фото этой экскурсии';gallery.append(heading);
@@ -27,13 +26,8 @@
   menu.querySelector('[data-mode="quest"]').onclick=()=>{mode='quest';menu.hidden=true;back.hidden=false;showScreen('passwordScreen');};
   menu.querySelector('[data-mode="relay"]').onclick=()=>{mode='relay';menu.hidden=true;page.hidden=false;form.hidden=false;gallery.hidden=true;waiting.hidden=true;photoButton.hidden=true;status.textContent='';page.querySelector('input').value='';};
   function receive(state){
-    if(!['photo','pause','closed'].includes(state.type))return;
-    const incoming=state.session||'legacy';
-    if(incoming!==gallerySession){clearGallery();gallerySession=incoming;}
-    if(state.type==='closed'){clearGallery();waiting.hidden=false;status.textContent='Экскурсия завершена. Ожидаем новую сессию.';return;}
     gallery.hidden=seen.size===0;
-
-    if(state.type==='pause') {currentPhoto=null;photoButton.hidden=true;waiting.hidden=false;status.textContent='';viewer.close();return;}
+    if(state.type==='pause') {clearGallery();currentPhoto=null;photoButton.hidden=true;waiting.hidden=false;status.textContent='';viewer.close();return;}
     if(state.type!=='photo') return;
     const p=R.byId.get(state.id);
     if(!p || !R.allowedURL(p.url)){photoButton.hidden=true;waiting.hidden=false;status.textContent='Это фото пока не подготовлено. Сообщите гиду.';viewer.close();return;}
@@ -49,7 +43,7 @@
     if(mode!=='quest')return;
     clearInterval(pollingTimer);lastPolledId=null;
     R.poll(state=>{
-      if(mode!=='quest'||state.session||!['pause','quest'].includes(state.type))return;
+      if(mode!=='quest'||!['pause','quest'].includes(state.type))return;
       const n=state.type==='pause'?0:state.id;
       if(n!==lastPolledId){lastPolledId=n;if(n===0)showWaiting();else loadQuest(n);}
     },text=>{const el=document.querySelector('#riddleWaiting .waiting-text');if(el)el.textContent=text;});
