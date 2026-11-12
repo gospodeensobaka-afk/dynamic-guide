@@ -1,0 +1,31 @@
+/* Local styles only. Shared by the two apps. */
+body { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+.relay-shell { position:fixed; inset:0; z-index:100000; overflow:auto; padding:88px 16px calc(24px + env(safe-area-inset-bottom)); background:var(--bg,#080b11); color:var(--text,#eef0f5); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+.relay-shell[hidden], .relay-shell [hidden] { display:none!important; }
+.relay-shell * { box-sizing:border-box; }
+.relay-card { max-width:640px; margin:auto; }
+.relay-shell h1 { font-size:26px; margin:16px 0; }
+.relay-shell p { margin:14px 0; }
+.relay-shell button,.relay-shell input,.relay-shell select { font:inherit; }
+.relay-shell button { padding:14px; border:1px solid var(--gold,#e8c97a); border-radius:12px; background:var(--surface,#171b26); color:var(--text,#eef0f5); cursor:pointer; }
+.relay-shell button:disabled { opacity:.45; cursor:default; }
+.relay-choice { display:block; width:100%; margin:16px 0; min-height:80px; text-align:left; }
+.relay-choice strong { display:block; color:var(--gold,#e8c97a); font-size:21px; }
+.relay-back { margin:0 0 18px; }
+.relay-shell input { width:100%; padding:14px; background:#101622; color:#fff; border:1px solid #52586a; border-radius:12px; margin:12px 0; }
+.relay-status { white-space:pre-wrap; overflow-wrap:anywhere; min-height:28px; color:var(--gold,#e8c97a); }
+.relay-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:16px 0; }
+.relay-grid .relay-tile { padding:0; overflow:hidden; aspect-ratio:1; position:relative; border:2px solid transparent; background:#171b26; }
+.relay-tile img { width:100%; height:100%; object-fit:cover; display:block; }
+.relay-tile span { position:absolute; bottom:0; left:0; right:0; background:#000b; padding:3px; font-size:12px; }
+.relay-grid .relay-tile.selected { border-color:var(--gold,#e8c97a); box-shadow:0 0 0 2px #e8c97a55; }
+.relay-pause { display:block; width:100%; margin:12px 0; }
+.relay-wait { text-align:center; padding:15vh 8px; }
+.relay-wait .relay-orbit { width:60px; height:60px; margin:auto auto 24px; border:1px dashed var(--gold,#e8c97a); border-radius:50%; }
+.relay-main-photo { display:block; width:100%; max-height:calc(100dvh - 240px); object-fit:contain; cursor:zoom-in; }
+.relay-viewer { z-index:100001; overflow:hidden; touch-action:none; }
+.relay-stage { position:absolute; top:150px; left:0; right:0; bottom:24px; display:flex; justify-content:center; align-items:center; overflow:hidden; touch-action:none; }
+.relay-stage img { max-width:100%; max-height:100%; object-fit:contain; transform-origin:center; user-select:none; -webkit-user-select:none; pointer-events:none; }
+.relay-quest-back { position:fixed; top:88px; right:12px; z-index:9999; padding:8px 12px; background:#101622; color:#e8c97a; border:1px solid #e8c97a; border-radius:10px; font:13px system-ui,sans-serif; }
+.relay-quest-back[hidden] { display:none; }
+.relay-shell textarea { width:100%; min-height:150px; background:#111827; color:#fff; }
