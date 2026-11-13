@@ -29,3 +29,58 @@ body { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
 .relay-quest-back { position:fixed; top:88px; right:12px; z-index:9999; padding:8px 12px; background:#101622; color:#e8c97a; border:1px solid #e8c97a; border-radius:10px; font:13px system-ui,sans-serif; }
 .relay-quest-back[hidden] { display:none; }
 .relay-shell textarea { width:100%; min-height:150px; background:#111827; color:#fff; }
+
+/* Quest visual language; safe scrolling begins below the native VK panel. */
+:root { --relay-top:max(88px, env(safe-area-inset-top, 0px)); }
+.relay-shell { top:var(--relay-top); padding:12px 20px calc(24px + env(safe-area-inset-bottom, 0px)); background:#080B11; isolation:isolate; }
+.relay-shell::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; background:radial-gradient(ellipse at 50% 15%,rgba(232,201,122,.07),transparent 65%), url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"); opacity:.7; }
+.relay-shell button { background:#0E1320; border-color:rgba(232,201,122,.32); transition:background .15s, transform .15s; }
+.relay-shell button:active { transform:scale(.98); }
+.relay-shell button:focus-visible,.relay-quest-back:focus-visible { outline:2px solid #E8C97A; outline-offset:4px; }
+.relay-shell .relay-back { min-height:44px; font-size:14px; padding:10px 14px; margin:0 0 20px; }
+#modeChoice { display:flex; }
+.relay-welcome { width:100%; max-width:380px; margin:auto; padding:28px 0 40px; text-align:center; }
+.relay-compass { width:56px; height:56px; margin:0 auto 26px; animation:relayCompassSpin 20s linear infinite; }
+.relay-compass svg { width:100%; height:100%; }
+.relay-welcome h1 { font-size:clamp(25px,7vw,32px); line-height:1.25; letter-spacing:.025em; color:#E8C97A; margin:0 0 14px; }
+.relay-welcome > p { font-size:14px; color:rgba(255,255,255,.55); margin:0 0 30px; }
+.relay-shell .relay-choice { min-height:104px; padding:20px 16px; margin:14px auto; text-align:center; border-radius:14px; font-size:14px; color:rgba(255,255,255,.7); }
+.relay-choice strong { font-size:20px; line-height:1.3; margin-bottom:7px; }
+.relay-shell .relay-choice:first-of-type,.relay-shell .relay-primary { background:linear-gradient(135deg,#E8C97A,#B8932A); color:#080B11; border:0; box-shadow:0 8px 28px rgba(232,201,122,.18); }
+.relay-choice:first-of-type strong { color:#080B11; }
+#relayLogin { max-width:320px; margin:clamp(28px,9vh,100px) auto 0; text-align:center; }
+#relayLogin h1 { color:#E8C97A; font-size:26px; line-height:1.25; letter-spacing:.04em; margin-bottom:28px; }
+#relayLogin label { display:block; color:rgba(255,255,255,.55); font-size:14px; }
+#relayLogin input { border:0; border-bottom:1px solid rgba(232,201,122,.3); border-radius:0; background:transparent; text-align:center; font-size:28px; letter-spacing:.25em; padding:18px 8px; margin:22px 0; caret-color:#E8C97A; }
+#relayLogin input:focus { outline:none; border-bottom-color:#E8C97A; }
+#relayLogin input::placeholder { color:rgba(255,255,255,.2); }
+.relay-shell .relay-primary { width:100%; min-height:54px; border-radius:14px; font-weight:700; letter-spacing:.08em; }
+.relay-shell .relay-hint { color:rgba(255,255,255,.4); font-size:12px; line-height:1.6; margin:28px auto 12px; max-width:250px; }
+.relay-status { font-size:14px; margin:10px 0; }
+#relayTourist:has(#relayLogin:not([hidden])) .relay-status { text-align:center; }
+.relay-wait { min-height:calc(100dvh - var(--relay-top) - 160px); padding:32px 8px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.relay-wait-icon { animation:relayWaitBounce 2s ease-in-out infinite; }
+.relay-wait .relay-compass { margin-bottom:14px; }
+.relay-wait p { color:rgba(255,255,255,.55); font-size:15px; letter-spacing:.02em; }
+.relay-dots { display:flex; gap:6px; margin-top:8px; }
+.relay-dots span { width:6px; height:6px; border-radius:50%; background:rgba(232,201,122,.35); animation:relayDotPulse 1.4s ease-in-out infinite; }
+.relay-dots span:nth-child(2) { animation-delay:.2s; }
+.relay-dots span:nth-child(3) { animation-delay:.4s; }
+#relayPhotoButton { width:100%; padding:8px; border-radius:16px; }
+.relay-main-photo { max-height:calc(100dvh - var(--relay-top) - 150px); }
+#relayTourist h2 { font-size:20px; margin:24px 0 12px; font-weight:600; }
+.relay-grid { gap:10px; }
+.relay-quest-back { top:calc(var(--relay-top) + 8px); left:16px; right:auto; min-height:44px; }
+#questControls { padding-top:64px; }
+.relay-shell.relay-viewer { inset:0; padding:0; background:#080B11; }
+.relay-viewer::before { display:none; }
+.relay-stage { inset:0; }
+.relay-viewer-close { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); padding:0!important; z-index:2; }
+.relay-viewer-close:focus-visible { clip-path:none; width:auto; height:auto; top:calc(var(--relay-top) + 8px); left:16px; padding:12px!important; }
+@keyframes relayCompassSpin { to { transform:rotate(360deg); } }
+@keyframes relayWaitBounce { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-8px); } }
+@keyframes relayDotPulse { 0%,100% { opacity:.3; transform:scale(.8); } 50% { opacity:1; transform:scale(1); } }
+@media (prefers-reduced-motion:reduce) { .relay-compass,.relay-wait-icon,.relay-dots span { animation:none; } }
+/* Keep both navigation actions accessible on the quest map. */
+body:has(#mapScreen.active) .relay-quest-back { top:calc(var(--relay-top) + 56px); }
+#relayGuide .relay-card > button:not(.relay-back) { margin-bottom:8px; }
