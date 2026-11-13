@@ -84,3 +84,10 @@ body { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
 /* Keep both navigation actions accessible on the quest map. */
 body:has(#mapScreen.active) .relay-quest-back { top:calc(var(--relay-top) + 56px); }
 #relayGuide .relay-card > button:not(.relay-back) { margin-bottom:8px; }
+
+/* Preparation is independent of the received-photo gallery. */
+.media-preload-progress { color:rgba(255,255,255,.48); font:12px/1.5 system-ui,sans-serif; margin:18px 0 0; text-align:center; }
+.media-preload-quest { position:fixed; top:calc(var(--relay-top) + 58px); left:16px; right:16px; z-index:9998; pointer-events:none; margin:0; text-align:left; }
+.media-preload-progress[hidden] { display:none; }
+body:has(#mapScreen.active) .media-preload-quest { top:calc(var(--relay-top) + 108px); }
+.relay-shell .relay-vibration { display:block; padding:6px 0; margin:-8px 0 14px; background:none; border:0; color:rgba(255,255,255,.55); font-size:12px; min-height:32px; }
