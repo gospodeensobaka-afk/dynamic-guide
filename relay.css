@@ -91,3 +91,17 @@ body:has(#mapScreen.active) .relay-quest-back { top:calc(var(--relay-top) + 56px
 .media-preload-progress[hidden] { display:none; }
 body:has(#mapScreen.active) .media-preload-quest { top:calc(var(--relay-top) + 108px); }
 .relay-shell .relay-vibration { display:block; padding:6px 0; margin:-8px 0 14px; background:none; border:0; color:rgba(255,255,255,.55); font-size:12px; min-height:32px; }
+
+/* Soft press feedback for touch, mouse and keyboard, with reduced-motion support. */
+.relay-shell button,.relay-quest-back,#questControls button { transition:transform 160ms ease-out,filter 160ms ease-out,box-shadow 160ms ease-out; transform-origin:center; }
+.relay-shell button:not(:disabled):active,.relay-quest-back:active,#questControls button:not(:disabled):active { transform:scale(.96); filter:brightness(1.12); }
+.relay-grid.editing-order .relay-tile:active { transform:none; filter:none; }
+@media (prefers-reduced-motion:reduce) {
+  .relay-shell button,.relay-quest-back,#questControls button { transition:none; }
+  .relay-shell button:not(:disabled):active,.relay-quest-back:active,#questControls button:not(:disabled):active { transform:none; }
+}
+
+/* Preloading continues silently. */
+.media-preload-progress { display:none!important; }
+#modeChoice .relay-choice { display:flex; justify-content:center; align-items:center; }
+#modeChoice .relay-choice strong { margin:0; }
